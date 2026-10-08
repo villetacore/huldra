@@ -132,9 +132,34 @@ fn cargo(args: &[&str], options: &Options) -> Result {
     Ok(())
 }
 
+/// Programs installed in /sbin instead of /bin.
+const SBIN: &[&str] = &["init", "mount", "umount", "reboot", "poweroff"];
+
+fn build_user() -> Result<Vec<image::ImageFile>> {
+    let mut cmd = Command::new(env::var("CARGO").unwrap_or_else(|_| "cargo".into()));
+    cmd.current_dir(root()).args(["build", "-p", "huldra-user", "--bins", "--target", TARGET, "--profile", "user"]);
+    if !cmd.status().map_err(|e| e.to_string())?.success() {
+        return Err("building user space failed".into());
+    }
+    let out = target_dir().join(TARGET).join("user");
+    let mut files = Vec::new();
+    let mut names: Vec<String> = fs::read_dir(root().join("user").join("src").join("bin"))
+        .map_err(|e| e.to_string())?
+        .flatten()
+        .filter_map(|e| e.file_name().to_str()?.strip_suffix(".rs").map(String::from))
+        .collect();
+    names.sort();
+    for name in names {
+        let dir = if SBIN.contains(&name.as_str()) { "sbin" } else { "bin" };
+        files.push(image::ImageFile { dest: format!("{dir}/{name}"), source: out.join(&name), mode: 0o755 });
+    }
+    Ok(files)
+}
+
 pub fn build(options: &Options) -> Result<Artifacts> {
     let out = target_dir().join(TARGET).join(profile_dir(options));
-    let files = image::collect_tree(&root().join("rootfs"))?;
+    let mut files = image::collect_tree(&root().join("rootfs"))?;
+    files.extend(build_user()?);
     let initrd = target_dir().join("initrd.cpio");
     image::write_initrd(&files, &initrd)?;
 

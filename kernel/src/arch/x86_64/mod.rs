@@ -11,6 +11,7 @@ pub mod percpu;
 pub mod pic;
 pub mod pit;
 pub mod port;
+pub mod syscall;
 pub mod trap;
 
 use core::arch::{asm, global_asm};
@@ -25,6 +26,7 @@ global_asm!(include_str!("entry.S"), options(raw));
 pub fn init() {
     gdt::init();
     percpu::init(); // after gdt::init, which reloads GS
+    syscall::init();
     idt::init();
     pic::init();
     pit::init();

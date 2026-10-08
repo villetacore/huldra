@@ -5,6 +5,10 @@ pub mod sched;
 pub mod wait;
 
 use crate::arch::context::Context;
+use crate::fs::FdTable;
+use crate::proc::mm::MemorySpace;
+use crate::proc::signal::SignalState;
+use crate::proc::ProcState;
 use crate::mm::kstack::KernelStack;
 use crate::sync::SpinLock;
 use alloc::boxed::Box;
@@ -13,7 +17,7 @@ use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::cell::UnsafeCell;
-use core::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicU8, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicU64, AtomicU8, Ordering};
 use wait::WaitQueue;
 
 pub use sched::{current, schedule, yield_now};
@@ -61,7 +65,20 @@ pub struct Task {
     pub exited: WaitQueue,
     detached: AtomicBool,
     /// Ticks spent running (for /proc and `ps`).
-    pub cpu_ticks: core::sync::atomic::AtomicU64,
+    pub cpu_ticks: AtomicU64,
+
+    // Process state (unused by kernel threads).
+    /// Page table root to load when running; 0 = kernel page table.
+    pub cr3: AtomicU64,
+    user: AtomicBool,
+    /// User FS base (thread pointer), restored on every switch.
+    pub fs_base: AtomicU64,
+    pub mm: SpinLock<Option<MemorySpace>>,
+    pub files: SpinLock<FdTable>,
+    pub proc: SpinLock<ProcState>,
+    pub signals: SpinLock<SignalState>,
+    /// Woken when a child of this process exits.
+    pub child_exit: WaitQueue,
 }
 
 // `context` is only touched by the scheduler with interrupts disabled.
@@ -87,6 +104,15 @@ impl Task {
 
     pub fn name(&self) -> String {
         self.name.lock().clone()
+    }
+
+    /// True for user processes (also after they exited).
+    pub fn is_user(&self) -> bool {
+        self.user.load(Ordering::Acquire)
+    }
+
+    pub fn set_user(&self) {
+        self.user.store(true, Ordering::Release);
     }
 }
 
@@ -115,8 +141,33 @@ fn new_task(pid: Pid, name: &str, kstack: Option<KernelStack>, context: Context)
         exit_code: AtomicI32::new(0),
         exited: WaitQueue::new(),
         detached: AtomicBool::new(false),
-        cpu_ticks: core::sync::atomic::AtomicU64::new(0),
+        cpu_ticks: AtomicU64::new(0),
+        cr3: AtomicU64::new(0),
+        user: AtomicBool::new(false),
+        fs_base: AtomicU64::new(0),
+        mm: SpinLock::new(None),
+        files: SpinLock::new(FdTable::new()),
+        proc: SpinLock::new(ProcState::kernel()),
+        signals: SpinLock::new(SignalState::new()),
+        child_exit: WaitQueue::new(),
     })
+}
+
+/// Creates a task that will enter user mode with `context`; the caller
+/// fills in its process state before calling [`start`].
+pub fn new_user_task(name: &str, kstack: KernelStack, context: Context) -> Arc<Task> {
+    new_task(alloc_pid(), name, Some(kstack), context)
+}
+
+/// Makes a fully initialized task visible and runnable.
+pub fn start(task: &Arc<Task>) {
+    TASKS.lock().insert(task.pid, task.clone());
+    sched::make_runnable(task);
+}
+
+/// Removes a reaped task from the task table.
+pub fn remove(pid: Pid) -> Option<Arc<Task>> {
+    TASKS.lock().remove(&pid)
 }
 
 extern "C" fn closure_entry(arg: u64) -> i32 {

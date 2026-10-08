@@ -38,6 +38,31 @@ pub fn init() {
     vfs::mount("/tmp", tmpfs::TmpFs::new(), "tmpfs").expect("mount /tmp");
 }
 
+/// Flushes every mounted file system.
+pub fn sync_all() {
+    for m in vfs::mount_list() {
+        if let Err(e) = m.fs.sync() {
+            kwarn!("sync of {} failed: {}", m.source, e);
+        }
+    }
+}
+
+/// Mounts a file system of type `fstype` (the `mount(2)` back end).
+pub fn mount_by_type(fstype: &str, source: &str, target: &str, _flags: u64) -> KResult<()> {
+    let fs: Arc<dyn vfs::FileSystem> = match fstype {
+        "tmpfs" => tmpfs::TmpFs::new(),
+        "proc" => procfs::new(),
+        "devfs" => return Err(Errno::EBUSY),
+        other => return crate::fs::mount_block_fs(other, source, target),
+    };
+    vfs::mount(target, fs, if source.is_empty() { fstype } else { source })
+}
+
+/// Mounts a disk-based file system (provided by block device drivers).
+pub fn mount_block_fs(_fstype: &str, _source: &str, _target: &str) -> KResult<()> {
+    Err(Errno::ENODEV)
+}
+
 /// Opens (and possibly creates) the file at `path`.
 pub fn open(path: &str, flags: u32, perm: u32) -> KResult<Arc<OpenFile>> {
     let inode = match vfs::lookup(path) {

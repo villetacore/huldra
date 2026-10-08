@@ -18,7 +18,6 @@ mod drivers;
 mod fs;
 mod mm;
 mod proc;
-mod shell;
 mod sync;
 mod syscall;
 mod task;
@@ -60,12 +59,14 @@ pub extern "C" fn kernel_main(magic: u32, info: u32) -> ! {
     drivers::init();
     arch::enable_interrupts();
 
-    let init = if boot.has_flag("ktest") {
-        task::spawn_kernel("ktest", || ktest::run_all())
+    if boot.has_flag("ktest") {
+        let t = task::spawn_kernel("ktest", || ktest::run_all());
+        task::detach(&t);
     } else {
-        task::spawn_kernel("ksh", || shell::run())
-    };
-    task::detach(&init);
+        let path = alloc::string::String::from(boot.option("init").unwrap_or("/sbin/init"));
+        let init = task::spawn_kernel("init", move || proc::lifecycle::run_init(&path));
+        assert_eq!(init.pid, 1);
+    }
     task::sched::idle_loop()
 }
 

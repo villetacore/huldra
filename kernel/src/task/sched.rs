@@ -82,7 +82,7 @@ pub fn block_current() {
     }
 }
 
-pub(super) fn set_zombie(task: &Arc<Task>) {
+pub(crate) fn set_zombie(task: &Arc<Task>) {
     let _s = SCHED.lock();
     task.set_state(State::Zombie);
 }

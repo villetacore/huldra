@@ -39,6 +39,7 @@ pub enum Errno {
     ENAMETOOLONG = 36,
     ENOSYS = 38,
     ENOTEMPTY = 39,
+    ELOOP = 40,
 }
 
 impl Errno {
@@ -51,7 +52,7 @@ impl Errno {
         const ALL: [Errno; 35] = [
             EPERM, ENOENT, ESRCH, EINTR, EIO, ENXIO, E2BIG, ENOEXEC, EBADF, ECHILD, EAGAIN, ENOMEM, EACCES,
             EFAULT, EBUSY, EEXIST, EXDEV, ENODEV, ENOTDIR, EISDIR, EINVAL, ENFILE, EMFILE, ENOTTY, EFBIG,
-            ENOSPC, ESPIPE, EROFS, EMLINK, EPIPE, ERANGE, ENAMETOOLONG, ENOSYS, ENOTEMPTY, EPERM,
+            ENOSPC, ESPIPE, EROFS, EMLINK, EPIPE, ERANGE, ENAMETOOLONG, ENOSYS, ENOTEMPTY, ELOOP,
         ];
         ALL.iter().copied().find(|e| e.code() == code)
     }
@@ -93,6 +94,7 @@ impl Errno {
             ENAMETOOLONG => "File name too long",
             ENOSYS => "Function not implemented",
             ENOTEMPTY => "Directory not empty",
+            ELOOP => "Too many levels of symbolic links",
         }
     }
 }

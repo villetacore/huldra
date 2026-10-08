@@ -15,6 +15,10 @@ name = "huldra-cpio"
 version = "0.2.0"
 
 [[package]]
+name = "huldra-elf"
+version = "0.2.0"
+
+[[package]]
 name = "huldra-kalloc"
 version = "0.2.0"
 
@@ -25,6 +29,15 @@ dependencies = [
  "huldra-abi",
  "huldra-buddy",
  "huldra-cpio",
+ "huldra-elf",
+ "huldra-kalloc",
+]
+
+[[package]]
+name = "huldra-user"
+version = "0.2.0"
+dependencies = [
+ "huldra-abi",
  "huldra-kalloc",
 ]
 

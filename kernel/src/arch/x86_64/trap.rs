@@ -6,7 +6,7 @@ use crate::console;
 
 /// Register state saved by `isr_common` (see trap.S), lowest address first.
 #[repr(C)]
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct TrapFrame {
     pub r15: u64,
     pub r14: u64,
@@ -77,8 +77,17 @@ impl TrapFrame {
 #[no_mangle]
 extern "C" fn trap_dispatch(frame: &mut TrapFrame) {
     match frame.vector {
-        3 => kinfo!("breakpoint at {:#x}", frame.rip),
-        0..=31 => fatal_exception(frame),
+        14 => {
+            if !crate::proc::handle_page_fault(frame) {
+                fatal_exception(frame);
+            }
+        }
+        3 if !frame.from_user() => kinfo!("breakpoint at {:#x}", frame.rip),
+        0..=31 => {
+            if !crate::proc::handle_user_exception(frame) {
+                fatal_exception(frame);
+            }
+        }
         v if v >= irq::IRQ_BASE as u64 && v < (irq::IRQ_BASE as usize + irq::IRQ_LINES) as u64 => {
             irq::dispatch((v - irq::IRQ_BASE as u64) as u8);
         }
@@ -86,12 +95,13 @@ extern "C" fn trap_dispatch(frame: &mut TrapFrame) {
         v if v == super::apic::SPURIOUS_VECTOR as u64 => {}
         0x80 => {
             super::enable_interrupts();
-            crate::syscall::dispatch(frame);
+            crate::syscall::handle(frame);
             super::disable_interrupts();
         }
         v => kwarn!("unexpected interrupt vector {}", v),
     }
     crate::task::sched::preempt_if_needed();
+    crate::proc::return_to_user(frame);
 }
 
 fn fatal_exception(f: &TrapFrame) -> ! {

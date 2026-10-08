@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["kernel", "xtask", "libs/*"]
+members = ["kernel", "xtask", "libs/*", "user"]
 # `cargo build` / `cargo test` at the root only touch host crates;
 # bare-metal crates are built by `cargo xtask`.
 default-members = ["xtask"]
@@ -17,3 +17,10 @@ panic = "abort"
 [profile.release]
 panic = "abort"
 debug = true
+
+# User programs: small and fast, built by `cargo xtask` with `--profile user`.
+[profile.user]
+inherits = "release"
+opt-level = "s"
+debug = false
+lto = true

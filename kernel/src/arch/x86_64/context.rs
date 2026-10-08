@@ -6,6 +6,8 @@ use core::mem::size_of;
 
 extern "C" {
     fn switch_context(save_rsp: *mut u64, new_rsp: u64);
+    #[link_name = "enter_user"]
+    fn enter_user_asm(frame: *const TrapFrame, kernel_stack_top: u64) -> !;
     fn kthread_trampoline();
     fn user_trampoline();
 }
@@ -103,4 +105,17 @@ pub fn user_entry_frame(entry: u64, stack: u64) -> TrapFrame {
         ss: USER_DATA as u64,
         ..TrapFrame::default()
     }
+}
+
+/// Leaves the kernel for good on the current kernel stack, entering user
+/// mode with `frame`.
+///
+/// # Safety
+/// `kernel_stack_top` must be the top of the current task's kernel stack and
+/// nothing above the caller's frame may be needed again.
+pub unsafe fn enter_user(frame: &TrapFrame, kernel_stack_top: u64) -> ! {
+    const _: () = assert!(size_of::<TrapFrame>() == 176);
+    let boxed = alloc::boxed::Box::new(*frame);
+    let ptr = alloc::boxed::Box::leak(boxed) as *const TrapFrame;
+    enter_user_asm(ptr, kernel_stack_top)
 }

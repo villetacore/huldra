@@ -246,6 +246,11 @@ pub fn umount(target: &str) -> KResult<()> {
     m.fs.sync()
 }
 
+/// All mounts (snapshot).
+pub fn mount_list() -> Vec<Mount> {
+    mount_table().into_values().collect()
+}
+
 /// (mount point, source, file system type) for every mount.
 pub fn mounts() -> Vec<(String, String, &'static str)> {
     mount_table().into_iter().map(|(p, m)| (p, m.source, m.fs.name())).collect()

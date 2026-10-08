@@ -131,6 +131,76 @@ switch_context:
     popfq
     ret
 
+# `syscall` instruction entry. RCX = user RIP, R11 = user RFLAGS,
+# interrupts are off (SFMASK). Builds the same TrapFrame as isr_common.
+.global syscall_entry
+syscall_entry:
+    swapgs
+    mov qword ptr gs:[16], rsp      # user RSP
+    mov rsp, qword ptr gs:[8]       # kernel stack
+    push 0x1b                       # ss  (USER_DATA | 3)
+    push qword ptr gs:[16]          # rsp
+    push r11                        # rflags
+    push 0x23                       # cs  (USER_CODE | 3)
+    push rcx                        # rip
+    push 0                          # error code
+    push 0x100                      # "vector" marking a syscall
+    push rax
+    push rbx
+    push rcx
+    push rdx
+    push rsi
+    push rdi
+    push rbp
+    push r8
+    push r9
+    push r10
+    push r11
+    push r12
+    push r13
+    push r14
+    push r15
+    mov rdi, rsp
+    cld
+    call syscall_dispatch
+    test eax, eax
+    jz trap_return                  # unusual frame: take the iretq path
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop r11
+    pop r10
+    pop r9
+    pop r8
+    pop rbp
+    pop rdi
+    pop rsi
+    pop rdx
+    add rsp, 8                      # rcx: replaced by the return RIP
+    pop rbx
+    pop rax
+    add rsp, 16                     # vector + error code
+    pop rcx                         # rip
+    add rsp, 8                      # cs
+    pop r11                         # rflags
+    pop rsp                         # user rsp
+    swapgs
+    sysretq
+
+# enter_user(frame: *const TrapFrame, kernel_stack_top: u64) -> !
+# Copies the frame to the top of the kernel stack and returns to user mode.
+.global enter_user
+enter_user:
+    cli
+    lea rax, [rsi - 176]
+    mov rsp, rax
+    mov rsi, rdi
+    mov rdi, rax
+    mov ecx, 22
+    rep movsq
+    jmp trap_return
+
 # First code run by a new kernel thread: r12 = argument, r13 = entry.
 .global kthread_trampoline
 kthread_trampoline:

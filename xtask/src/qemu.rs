@@ -146,7 +146,8 @@ impl Console {
         let mut buf = [0u8; 4096];
         loop {
             let clean = strip_ansi(&self.buffer);
-            if clean.ends_with("# ") || clean.ends_with("$ ") {
+            let last_line = clean.rsplit('\n').next().unwrap_or("");
+            if last_line.starts_with("root@") && last_line.ends_with("# ") {
                 self.buffer.clear();
                 return Ok(clean);
             }

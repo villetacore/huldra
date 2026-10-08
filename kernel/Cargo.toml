@@ -15,4 +15,5 @@ bench = false
 huldra-abi = { path = "../libs/abi" }
 huldra-buddy = { path = "../libs/buddy" }
 huldra-cpio = { path = "../libs/cpio" }
+huldra-elf = { path = "../libs/elf" }
 huldra-kalloc = { path = "../libs/kalloc" }

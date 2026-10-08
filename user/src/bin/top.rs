@@ -73,6 +73,7 @@ fn main() -> i32 {
     let mut keys = Keys::new();
     let mut prev: BTreeMap<u32, u64> = BTreeMap::new();
     let mut prev_time = time::uptime_ms();
+    let mut prev_idle = 0.0f32;
     let mut interval = 1000;
     let mut message = String::new();
     loop {
@@ -87,7 +88,10 @@ fn main() -> i32 {
                 ((d as f32 * 100.0 / elapsed_ticks as f32).min(100.0), p)
             })
             .collect();
-        let idle = rows.iter().find(|(_, p)| p.pid == 0).map_or(0.0, |r| r.0);
+        // Idle time from /proc/uptime (seconds of idle since boot).
+        let idle_now = fs::read_to_string("/proc/uptime").ok().and_then(|u| u.split_whitespace().nth(1).and_then(|v| v.parse::<f32>().ok())).unwrap_or(0.0);
+        let idle = if prev_idle > 0.0 { ((idle_now - prev_idle) * 10_000.0 / elapsed_ticks as f32).clamp(0.0, 100.0) } else { 0.0 };
+        prev_idle = idle_now;
         rows.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(core::cmp::Ordering::Equal).then(a.1.pid.cmp(&b.1.pid)));
         prev = procs.iter().map(|p| (p.pid, p.ticks)).collect();
 

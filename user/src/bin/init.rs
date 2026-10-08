@@ -37,13 +37,18 @@ fn mount_fstab() {
 }
 
 fn spawn_shell(shell: &str) -> Option<process::Pid> {
+    spawn_shell_with(shell, &["-sh"])
+}
+
+/// Runs a program on the console in a new session.
+fn spawn_shell_with(shell: &str, args: &[&str]) -> Option<process::Pid> {
     match process::fork() {
         Ok(None) => {
             // New session with the console as controlling terminal.
             let _ = sys::setsid();
             let _ = process::set_foreground(0, process::getpid());
             let _ = signal::default(signal::SIGINT);
-            let e = process::exec(shell, &["-sh"], &env::envp());
+            let e = process::exec(shell, args, &env::envp());
             eprintln!("init: cannot run {}: {}", shell, e);
             process::exit(127)
         }
@@ -81,6 +86,14 @@ fn main() -> i32 {
         process::getpid()
     );
 
+    // `gui` on the kernel command line: start the graphical session
+    // first; the console shell follows when it ends.
+    let gui = fs::read_to_string("/proc/cmdline").is_ok_and(|c| c.split_whitespace().any(|w| w == "gui"));
+    if gui {
+        if let Some(pid) = spawn_shell_with("/bin/startgui", &["startgui"]) {
+            let _ = process::wait(pid as i32);
+        }
+    }
     let shell = env::var("INIT_SHELL").unwrap_or("/bin/sh");
     let mut shell_pid = spawn_shell(shell);
     loop {

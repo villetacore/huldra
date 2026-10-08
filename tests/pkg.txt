@@ -4,7 +4,7 @@
 > pkg install hello
 < no package index
 > pkg update
-< 6 packages
+< 7 packages
 > pkg search
 < cowsay
 < fortune

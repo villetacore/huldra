@@ -53,6 +53,7 @@ options:
   --headless   no QEMU window, serial only
   --gdb        wait for gdb on localhost:1234
   --append S   kernel command line
+  --gui        boot straight into the graphical session
 ";
 
 fn main() -> ExitCode {
@@ -137,6 +138,10 @@ fn parse_options(args: &[String]) -> Result<Options> {
             "--headless" => o.headless = true,
             "--gdb" => o.gdb = true,
             "--append" => o.cmdline = Some(it.next().ok_or("--append needs a value")?.clone()),
+            "--gui" => {
+                let base = o.cmdline.take().unwrap_or_else(|| String::from("root=/dev/hda"));
+                o.cmdline = Some(format!("{base} gui"));
+            }
             other => return Err(format!("unknown option '{other}'")),
         }
     }

@@ -123,6 +123,8 @@ mod tests {
     }
 
     pub fn frames() {
+        // Other threads (netd) must not allocate while we count.
+        let irq = crate::arch::irq_save();
         let (free_before, _) = frame::stats();
         let a = frame::alloc().expect("out of frames");
         let b = frame::alloc_pages(3).expect("out of frames");
@@ -131,9 +133,11 @@ mod tests {
         frame::free(a);
         frame::free_pages(b, 3);
         assert_eq!(frame::stats().0, free_before);
+        crate::arch::irq_restore(irq);
     }
 
     pub fn user_mappings() {
+        let irq = crate::arch::irq_save();
         let (free_before, _) = frame::stats();
         let mut pt = PageTable::new().unwrap();
         let page = frame::alloc_zeroed().unwrap();
@@ -151,6 +155,7 @@ mod tests {
             frame::free(pt.root());
         }
         assert_eq!(frame::stats().0, free_before);
+        crate::arch::irq_restore(irq);
     }
 
     pub fn kernel_stacks() {

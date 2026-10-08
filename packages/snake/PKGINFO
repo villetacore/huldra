@@ -1,0 +1,3 @@
+name = snake
+version = 1.0-1
+description = The snake game in a window (a C program using gui.h)

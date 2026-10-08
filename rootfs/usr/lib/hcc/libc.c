@@ -3279,6 +3279,280 @@ const char *gai_strerror(int err) {
     return "Unknown error";
 }
 
+/* ---- gui: display server client (gui.h) ---------------------------------- */
+
+#include <gui.h>
+
+static int __gui_sock = -1;
+static unsigned __gui_client, __gui_next;
+static int __gui_w, __gui_h;
+static unsigned char *__gui_out;
+static size_t __gui_out_len, __gui_out_cap;
+static unsigned char __gui_in[65536];
+static size_t __gui_in_len;
+
+static void __gui_put(const void *p, size_t n) {
+    if (__gui_out_len + n > __gui_out_cap) {
+        size_t cap = __gui_out_cap ? __gui_out_cap * 2 : 65536;
+        while (cap < __gui_out_len + n)
+            cap *= 2;
+        __gui_out = realloc(__gui_out, cap);
+        __gui_out_cap = cap;
+    }
+    memcpy(__gui_out + __gui_out_len, p, n);
+    __gui_out_len += n;
+}
+
+static void __gui_u32(unsigned v) { __gui_put(&v, 4); }
+static void __gui_u16(unsigned v) {
+    unsigned short s = (unsigned short)v;
+    __gui_put(&s, 2);
+}
+static void __gui_u8(unsigned v) {
+    unsigned char c = (unsigned char)v;
+    __gui_put(&c, 1);
+}
+static void __gui_str(const char *s) {
+    size_t n = strlen(s);
+    if (n > 4096)
+        n = 4096;
+    __gui_u16((unsigned)n);
+    __gui_put(s, n);
+}
+
+/* Messages: u32 length, u8 tag, fields. */
+static size_t __gui_begin(int tag) {
+    size_t at = __gui_out_len;
+    __gui_u32(0);
+    __gui_u8(tag);
+    return at;
+}
+
+static void __gui_end(size_t at) {
+    unsigned len = (unsigned)(__gui_out_len - at - 4);
+    memcpy(__gui_out + at, &len, 4);
+    if (__gui_out_len > 60000)
+        gui_flush();
+}
+
+void gui_flush(void) {
+    size_t off = 0;
+    while (off < __gui_out_len) {
+        ssize_t n = send(__gui_sock, __gui_out + off, __gui_out_len - off, MSG_NOSIGNAL);
+        if (n <= 0)
+            break;
+        off += n;
+    }
+    __gui_out_len = 0;
+}
+
+int gui_fd(void) { return __gui_sock; }
+int gui_screen_width(void) { return __gui_w; }
+int gui_screen_height(void) { return __gui_h; }
+
+static unsigned __gui_le32(const unsigned char *p) { return p[0] | p[1] << 8 | p[2] << 16 | (unsigned)p[3] << 24; }
+
+/* Decodes one message into e; returns 1 if it is an event for the user. */
+static int __gui_decode(int tag, const unsigned char *p, struct gui_event *e) {
+    memset(e, 0, sizeof *e);
+    e->type = tag;
+    e->window = __gui_le32(p);
+    switch (tag) {
+    case 1: /* Welcome */
+        __gui_client = __gui_le32(p);
+        __gui_w = (int)__gui_le32(p + 4);
+        __gui_h = (int)__gui_le32(p + 8);
+        return 0;
+    case GUI_EXPOSE:
+        e->w = (int)__gui_le32(p + 4);
+        e->h = (int)__gui_le32(p + 8);
+        return 1;
+    case GUI_CONFIGURE:
+        e->x = (int)__gui_le32(p + 4);
+        e->y = (int)__gui_le32(p + 8);
+        e->w = (int)__gui_le32(p + 12);
+        e->h = (int)__gui_le32(p + 16);
+        return 1;
+    case GUI_KEY:
+        e->code = p[4] | p[5] << 8;
+        e->pressed = p[6];
+        e->mods = p[7];
+        e->ch = __gui_le32(p + 8);
+        return 1;
+    case GUI_BUTTON:
+        e->x = (int)__gui_le32(p + 4);
+        e->y = (int)__gui_le32(p + 8);
+        e->button = p[20];
+        e->pressed = p[21];
+        e->mods = p[22];
+        return 1;
+    case GUI_MOTION:
+        e->x = (int)__gui_le32(p + 4);
+        e->y = (int)__gui_le32(p + 8);
+        e->buttons = p[20];
+        return 1;
+    case GUI_FOCUS:
+        e->pressed = p[4];
+        return 1;
+    case GUI_CLOSE:
+        return 1;
+    }
+    return 0;
+}
+
+int gui_next_event(struct gui_event *e, int timeout_ms) {
+    gui_flush();
+    for (;;) {
+        if (__gui_in_len >= 5) {
+            unsigned len = __gui_le32(__gui_in);
+            if (len > sizeof __gui_in - 4) {
+                /* Too big for us (an image reply): skip it. */
+                __gui_in_len = 0;
+                continue;
+            }
+            if (__gui_in_len >= 4 + len) {
+                int tag = __gui_in[4];
+                unsigned char body[256];
+                size_t n = len - 1 < sizeof body ? len - 1 : sizeof body;
+                memset(body, 0, sizeof body);
+                memcpy(body, __gui_in + 5, n);
+                memmove(__gui_in, __gui_in + 4 + len, __gui_in_len - 4 - len);
+                __gui_in_len -= 4 + len;
+                if (__gui_decode(tag, body, e))
+                    return 1;
+                if (tag == 1)
+                    return 0; /* Welcome (during gui_connect) */
+                continue;
+            }
+        }
+        struct pollfd pfd = {__gui_sock, POLLIN, 0};
+        int r = poll(&pfd, 1, timeout_ms);
+        if (r < 0)
+            return -1;
+        if (r == 0)
+            return 0;
+        ssize_t n = recv(__gui_sock, __gui_in + __gui_in_len, sizeof __gui_in - __gui_in_len, 0);
+        if (n <= 0)
+            return -1;
+        __gui_in_len += n;
+    }
+}
+
+int gui_connect(void) {
+    const char *d = getenv("DISPLAY");
+    int num = 0;
+    if (d && strchr(d, ':'))
+        num = atoi(strchr(d, ':') + 1);
+    __gui_sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (__gui_sock < 0)
+        return -1;
+    struct sockaddr_in sa = {0};
+    sa.sin_family = AF_INET;
+    sa.sin_port = htons(6000 + num);
+    sa.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    if (connect(__gui_sock, (struct sockaddr *)&sa, sizeof sa) < 0) {
+        close(__gui_sock);
+        __gui_sock = -1;
+        return -1;
+    }
+    size_t at = __gui_begin(1); /* Hello */
+    __gui_u16(1);
+    __gui_end(at);
+    gui_flush();
+    struct gui_event e;
+    while (__gui_client == 0) {
+        if (gui_next_event(&e, 5000) <= 0 && __gui_client == 0)
+            return -1;
+    }
+    return 0;
+}
+
+unsigned gui_window(int x, int y, int w, int h, const char *title) {
+    unsigned id = __gui_client << 20 | ++__gui_next;
+    size_t at = __gui_begin(2); /* CreateWindow */
+    __gui_u32(id);
+    __gui_u32((unsigned)x);
+    __gui_u32((unsigned)y);
+    __gui_u32((unsigned)w);
+    __gui_u32((unsigned)h);
+    __gui_u8(0);
+    __gui_end(at);
+    gui_title(id, title);
+    at = __gui_begin(4); /* Map */
+    __gui_u32(id);
+    __gui_end(at);
+    gui_flush();
+    return id;
+}
+
+void gui_title(unsigned win, const char *title) {
+    size_t at = __gui_begin(7);
+    __gui_u32(win);
+    __gui_str(title ? title : "");
+    __gui_end(at);
+}
+
+void gui_destroy(unsigned win) {
+    size_t at = __gui_begin(3);
+    __gui_u32(win);
+    __gui_end(at);
+}
+
+void gui_fill(unsigned win, int x, int y, int w, int h, unsigned color) {
+    size_t at = __gui_begin(11);
+    __gui_u32(win);
+    __gui_u32((unsigned)x);
+    __gui_u32((unsigned)y);
+    __gui_u32((unsigned)w);
+    __gui_u32((unsigned)h);
+    __gui_u32(color | 0xFF000000u);
+    __gui_end(at);
+}
+
+void gui_text(unsigned win, int x, int y, unsigned fg, unsigned bg, const char *text) {
+    size_t at = __gui_begin(12);
+    __gui_u32(win);
+    __gui_u32((unsigned)x);
+    __gui_u32((unsigned)y);
+    __gui_u32(fg | 0xFF000000u);
+    __gui_u32(bg ? bg | 0xFF000000u : 0);
+    __gui_str(text);
+    __gui_end(at);
+}
+
+void gui_line(unsigned win, int x0, int y0, int x1, int y1, unsigned color) {
+    size_t at = __gui_begin(13);
+    __gui_u32(win);
+    __gui_u32((unsigned)x0);
+    __gui_u32((unsigned)y0);
+    __gui_u32((unsigned)x1);
+    __gui_u32((unsigned)y1);
+    __gui_u32(color | 0xFF000000u);
+    __gui_end(at);
+}
+
+void gui_circle(unsigned win, int x, int y, int r, unsigned color) {
+    size_t at = __gui_begin(25);
+    __gui_u32(win);
+    __gui_u32((unsigned)x);
+    __gui_u32((unsigned)y);
+    __gui_u32((unsigned)r);
+    __gui_u32(color | 0xFF000000u);
+    __gui_end(at);
+}
+
+void gui_image(unsigned win, int x, int y, int w, int h, const unsigned *pixels) {
+    size_t at = __gui_begin(14);
+    __gui_u32(win);
+    __gui_u32((unsigned)x);
+    __gui_u32((unsigned)y);
+    __gui_u32((unsigned)w);
+    __gui_u32((unsigned)h);
+    for (int i = 0; i < w * h; i++)
+        __gui_u32(pixels[i] | 0xFF000000u);
+    __gui_end(at);
+}
+
 /* ---- program entry -------------------------------------------------------- */
 
 int main();

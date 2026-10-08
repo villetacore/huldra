@@ -154,6 +154,11 @@ pub fn yield_now() {
     schedule();
 }
 
+/// Ticks spent in the idle task (for /proc/uptime).
+pub fn idle_ticks() -> u64 {
+    SCHED.lock().idle.as_ref().map_or(0, |t| t.cpu_ticks.load(Ordering::Relaxed))
+}
+
 /// Called from the timer interrupt.
 pub fn timer_tick() {
     if let Some(c) = SCHED.lock().current.as_ref() {

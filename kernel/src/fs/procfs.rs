@@ -40,6 +40,7 @@ impl Inode for ProcFile {
 }
 
 const STATIC_FILES: &[&str] = &[
+    "cmdline",
     "cpuinfo",
     "interrupts",
     "kmsg",
@@ -90,9 +91,7 @@ fn static_file(name: &str) -> Option<String> {
     Some(match name {
         "uptime" => {
             let ms = crate::time::uptime_ms();
-            let idle = task::lookup(0).map_or(0, |t| {
-                t.cpu_ticks.load(core::sync::atomic::Ordering::Relaxed)
-            });
+            let idle = crate::task::sched::idle_ticks();
             let idle_ms = idle * 1000 / crate::time::HZ;
             format!(
                 "{}.{:02} {}.{:02}\n",
@@ -113,6 +112,8 @@ fn static_file(name: &str) -> Option<String> {
                 heap.slab_pages_bytes / 1024
             )
         }
+        "cmdline" => format!("{}
+", crate::bootinfo::get().cmdline.as_str()),
         "version" => format!(
             "{} version {} (rustc) #1 x86_64\n",
             crate::NAME,

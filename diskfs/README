@@ -10,3 +10,5 @@ Files you create anywhere on the disk survive reboots.
 Software:  pkg update; pkg search; pkg install cowsay fortune 2048 sl
 Network:   ifconfig; ping 10.0.2.2; wget http://host/file; httpd &
 Editors:   edit FILE (Ctrl+S save, Ctrl+Q quit), less FILE, fm
+Graphics:  startgui (or startgui tilewm); right-click the desktop for a menu;
+           examples/window.c shows a window from C (cc -run window.c)

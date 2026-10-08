@@ -1,4 +1,4 @@
-//! grep [-i] [-v] [-n] [-c] PATTERN [file...] (fixed-string matching)
+//! grep [-i] [-v] [-n] [-c] [-q] PATTERN [file...] (fixed-string matching)
 
 #![no_std]
 #![no_main]
@@ -10,7 +10,7 @@ huldra_user::main!(main);
 
 fn main() -> i32 {
     let args = &env::args()[1..];
-    let (mut ignore_case, mut invert, mut numbers, mut count_only) = (false, false, false, false);
+    let (mut ignore_case, mut invert, mut numbers, mut count_only, mut quiet) = (false, false, false, false, false);
     let mut rest: Vec<&String> = Vec::new();
     for a in args {
         match a.as_str() {
@@ -18,11 +18,12 @@ fn main() -> i32 {
             "-v" => invert = true,
             "-n" => numbers = true,
             "-c" => count_only = true,
+            "-q" => quiet = true,
             _ => rest.push(a),
         }
     }
     let Some(pattern) = rest.first() else {
-        eprintln!("usage: grep [-i] [-v] [-n] [-c] PATTERN [file...]");
+        eprintln!("usage: grep [-i] [-v] [-n] [-c] [-q] PATTERN [file...]");
         return 2;
     };
     let pattern = if ignore_case {
@@ -62,6 +63,9 @@ fn main() -> i32 {
             if hay.contains(pattern.as_str()) != invert {
                 count += 1;
                 found = true;
+                if quiet {
+                    return 0;
+                }
                 if !count_only {
                     let prefix = if show_name {
                         huldra_user::format!("{}:", f)

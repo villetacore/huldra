@@ -42,7 +42,7 @@ pub unsafe fn syscall3(n: usize, a0: usize, a1: usize, a2: usize) -> isize {
     syscall6(n, a0, a1, a2, 0, 0, 0)
 }
 
-fn check(ret: isize) -> Result<usize> {
+pub(crate) fn check(ret: isize) -> Result<usize> {
     if (-4095..0).contains(&ret) {
         Err(Errno::from_code(-ret as i32).unwrap_or(Errno::EIO))
     } else {

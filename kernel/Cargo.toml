@@ -18,3 +18,4 @@ huldra-cpio = { path = "../libs/cpio" }
 huldra-elf = { path = "../libs/elf" }
 huldra-ext2 = { path = "../libs/ext2" }
 huldra-kalloc = { path = "../libs/kalloc" }
+huldra-net = { path = "../libs/net" }

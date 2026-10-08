@@ -41,6 +41,24 @@ pub enum Errno {
     ENOTEMPTY = 39,
     ELOOP = 40,
     ETIMEDOUT = 110,
+    ENOTSOCK = 88,
+    EDESTADDRREQ = 89,
+    EMSGSIZE = 90,
+    EPROTOTYPE = 91,
+    ENOPROTOOPT = 92,
+    EPROTONOSUPPORT = 93,
+    EOPNOTSUPP = 95,
+    EAFNOSUPPORT = 97,
+    EADDRINUSE = 98,
+    EADDRNOTAVAIL = 99,
+    ENETUNREACH = 101,
+    ECONNRESET = 104,
+    EISCONN = 106,
+    ENOTCONN = 107,
+    ECONNREFUSED = 111,
+    EHOSTUNREACH = 113,
+    EALREADY = 114,
+    EINPROGRESS = 115,
 }
 
 impl Errno {
@@ -50,7 +68,7 @@ impl Errno {
 
     pub fn from_code(code: i32) -> Option<Errno> {
         use Errno::*;
-        const ALL: [Errno; 36] = [
+        const ALL: [Errno; 54] = [
             EPERM,
             ENOENT,
             ESRCH,
@@ -87,6 +105,24 @@ impl Errno {
             ENOTEMPTY,
             ELOOP,
             ETIMEDOUT,
+            ENOTSOCK,
+            EDESTADDRREQ,
+            EMSGSIZE,
+            EPROTOTYPE,
+            ENOPROTOOPT,
+            EPROTONOSUPPORT,
+            EOPNOTSUPP,
+            EAFNOSUPPORT,
+            EADDRINUSE,
+            EADDRNOTAVAIL,
+            ENETUNREACH,
+            ECONNRESET,
+            EISCONN,
+            ENOTCONN,
+            ECONNREFUSED,
+            EHOSTUNREACH,
+            EALREADY,
+            EINPROGRESS,
         ];
         ALL.iter().copied().find(|e| e.code() == code)
     }
@@ -130,6 +166,24 @@ impl Errno {
             ENOTEMPTY => "Directory not empty",
             ELOOP => "Too many levels of symbolic links",
             ETIMEDOUT => "Connection timed out",
+            ENOTSOCK => "Socket operation on non-socket",
+            EDESTADDRREQ => "Destination address required",
+            EMSGSIZE => "Message too long",
+            EPROTOTYPE => "Protocol wrong type for socket",
+            ENOPROTOOPT => "Protocol not available",
+            EPROTONOSUPPORT => "Protocol not supported",
+            EOPNOTSUPP => "Operation not supported",
+            EAFNOSUPPORT => "Address family not supported by protocol",
+            EADDRINUSE => "Address already in use",
+            EADDRNOTAVAIL => "Cannot assign requested address",
+            ENETUNREACH => "Network is unreachable",
+            ECONNRESET => "Connection reset by peer",
+            EISCONN => "Transport endpoint is already connected",
+            ENOTCONN => "Transport endpoint is not connected",
+            ECONNREFUSED => "Connection refused",
+            EHOSTUNREACH => "No route to host",
+            EALREADY => "Operation already in progress",
+            EINPROGRESS => "Operation now in progress",
         }
     }
 }

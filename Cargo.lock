@@ -44,7 +44,12 @@ dependencies = [
  "huldra-elf",
  "huldra-ext2",
  "huldra-kalloc",
+ "huldra-net",
 ]
+
+[[package]]
+name = "huldra-net"
+version = "0.2.0"
 
 [[package]]
 name = "huldra-user"
@@ -54,6 +59,7 @@ dependencies = [
  "huldra-archive",
  "huldra-hcc",
  "huldra-kalloc",
+ "huldra-net",
 ]
 
 [[package]]

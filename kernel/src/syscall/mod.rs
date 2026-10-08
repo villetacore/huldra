@@ -8,6 +8,7 @@ mod fs;
 mod linux;
 mod memory;
 mod misc;
+mod net;
 mod process;
 mod signal;
 
@@ -82,6 +83,21 @@ fn call(n: usize, a: &mut Args) -> KResult<Ret> {
         nr::WRITEV => fs::writev(a),
         nr::ACCESS => fs::access(a),
         nr::PIPE => fs::pipe(a, 0),
+        nr::SOCKET => net::socket(a),
+        nr::BIND => net::bind(a),
+        nr::LISTEN => net::listen(a),
+        nr::CONNECT => net::connect(a),
+        nr::ACCEPT => net::accept4(a, 0),
+        nr::ACCEPT4 => net::accept4(a, a.a3() as u32),
+        nr::SENDTO => net::sendto(a),
+        nr::RECVFROM => net::recvfrom(a),
+        nr::SENDMSG => net::sendmsg(a),
+        nr::RECVMSG => net::recvmsg(a),
+        nr::SHUTDOWN => net::shutdown(a),
+        nr::GETSOCKNAME => net::getsockname(a),
+        nr::GETPEERNAME => net::getpeername(a),
+        nr::SETSOCKOPT => net::setsockopt(a),
+        nr::GETSOCKOPT => net::getsockopt(a),
         nr::PIPE2 => fs::pipe(a, a.a1() as u32),
         nr::SCHED_YIELD => {
             sched::yield_now();

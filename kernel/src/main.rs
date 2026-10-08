@@ -17,6 +17,7 @@ mod bootinfo;
 mod drivers;
 mod fs;
 mod mm;
+mod net;
 mod proc;
 mod sync;
 mod syscall;
@@ -75,6 +76,7 @@ pub extern "C" fn kernel_main(magic: u32, info: u32) -> ! {
     task::sched::init();
     drivers::init();
     fs::init(boot.option("root"));
+    net::init(boot.option("ip"));
     arch::enable_interrupts();
 
     if boot.has_flag("ktest") {
@@ -85,6 +87,7 @@ pub extern "C" fn kernel_main(magic: u32, info: u32) -> ! {
         let init = task::spawn_kernel("init", move || proc::lifecycle::run_init(&path));
         assert_eq!(init.pid, 1);
     }
+    net::start();
     // Write dirty disk blocks back every few seconds.
     task::detach(&task::spawn_kernel("flushd", || loop {
         task::sleep_ms(5000);

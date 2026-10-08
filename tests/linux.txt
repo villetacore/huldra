@@ -7,5 +7,7 @@
 < posix: 0 failed
 > /opt/linux-tests/threads
 < counter=80000 (expected 80000)
+> /opt/linux-tests/net
+< net: 0 failed (inet_ntoa 127.0.0.1)
 > dmesg | grep unimplemented
 ! unimplemented

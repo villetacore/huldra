@@ -51,7 +51,7 @@ impl OpenFile {
     fn is_seekable(&self) -> bool {
         !matches!(
             self.inode.metadata().kind,
-            FileType::Fifo | FileType::CharDevice
+            FileType::Fifo | FileType::CharDevice | FileType::Socket
         )
     }
 

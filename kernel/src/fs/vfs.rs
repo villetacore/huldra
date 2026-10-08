@@ -30,6 +30,7 @@ pub enum FileType {
     BlockDevice,
     Fifo,
     Symlink,
+    Socket,
 }
 
 impl FileType {
@@ -41,6 +42,7 @@ impl FileType {
             FileType::BlockDevice => abi::S_IFBLK,
             FileType::Fifo => abi::S_IFIFO,
             FileType::Symlink => abi::S_IFLNK,
+            FileType::Socket => abi::S_IFSOCK,
         }
     }
 
@@ -52,6 +54,7 @@ impl FileType {
             FileType::BlockDevice => abi::DT_BLK,
             FileType::Fifo => abi::DT_FIFO,
             FileType::Symlink => abi::DT_LNK,
+            FileType::Socket => abi::DT_SOCK,
         }
     }
 }

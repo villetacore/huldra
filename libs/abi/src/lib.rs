@@ -6,6 +6,7 @@
 pub mod errno;
 pub mod fs;
 pub mod mm;
+pub mod net;
 pub mod process;
 pub mod signal;
 pub mod syscall;

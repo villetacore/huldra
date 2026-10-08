@@ -50,6 +50,41 @@ const STATIC_FILES: &[&str] = &[
     "version",
 ];
 const PID_FILES: &[&str] = &["cmdline", "stat", "status"];
+const NET_FILES: &[&str] = &["dns", "if", "sockets"];
+const NET_DIR_INO: u64 = 90;
+
+/// /proc/net: interface configuration and sockets.
+struct NetDir {
+    dev: u64,
+}
+
+impl Inode for NetDir {
+    fn metadata(&self) -> Metadata {
+        Metadata::new(self.dev, NET_DIR_INO, FileType::Directory, 0o555)
+    }
+
+    fn lookup(&self, name: &str) -> KResult<Arc<dyn Inode>> {
+        let i = NET_FILES.iter().position(|&f| f == name).ok_or(Errno::ENOENT)?;
+        let generate: Generator = match NET_FILES[i] {
+            "dns" => Box::new(crate::net::dns_text),
+            "if" => Box::new(crate::net::interface_text),
+            _ => Box::new(crate::net::sockets_text),
+        };
+        Ok(Arc::new(ProcFile { dev: self.dev, ino: NET_DIR_INO + 1 + i as u64, generate }))
+    }
+
+    fn readdir(&self) -> KResult<Vec<DirEntry>> {
+        Ok(NET_FILES
+            .iter()
+            .enumerate()
+            .map(|(i, n)| DirEntry { name: n.to_string(), ino: NET_DIR_INO + 1 + i as u64, kind: FileType::Regular })
+            .collect())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
 
 fn static_file(name: &str) -> Option<String> {
     Some(match name {
@@ -195,6 +230,9 @@ impl Inode for ProcRoot {
                 generate: Box::new(move || static_file(file).unwrap_or_default()),
             }));
         }
+        if name == "net" {
+            return Ok(Arc::new(NetDir { dev: self.dev }));
+        }
         let pid = if name == "self" {
             crate::task::sched::current_pid()
         } else {
@@ -214,6 +252,7 @@ impl Inode for ProcRoot {
                 kind: FileType::Regular,
             })
             .collect();
+        v.push(DirEntry { name: "net".to_string(), ino: NET_DIR_INO, kind: FileType::Directory });
         for t in task::all_tasks() {
             v.push(DirEntry {
                 name: t.pid.to_string(),

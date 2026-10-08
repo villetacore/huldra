@@ -100,6 +100,25 @@
 .
 > echo still alive
 < still alive
+> until grep -q bound /proc/net/if; do sleep 0.2; done; ifconfig
+< inet 10.0.2.15/24 gateway 10.0.2.2
+> ping -c 2 -i 200 10.0.2.2
+< 2 packets transmitted, 2 received
+> host localhost
+< localhost has address 127.0.0.1
+> httpd -p 8080 /etc > /tmp/httpd.log &
+> sleep 0.5; wget -O - http://127.0.0.1:8080/hostname
+< huldra
+> wget -q -O /tmp/os http://localhost:8080/os-release && cat /tmp/os
+< PRETTY_NAME
+> wget -O - http://127.0.0.1:8080/nothing
+< HTTP 404
+> nc -l 7000 < /dev/null > /tmp/nc.out & sleep 0.3; echo over-tcp | nc 127.0.0.1 7000; sleep 0.3; cat /tmp/nc.out
+< over-tcp
+> cat /proc/net/sockets
+< LISTEN
+> cc -run /usr/share/huldra/examples/fetch.c localhost 8080 /hostname
+< huldra
 > utest
 < utest: 20 passed, 0 failed
 > cc /usr/share/huldra/examples/hello.c -o /tmp/hello && /tmp/hello x

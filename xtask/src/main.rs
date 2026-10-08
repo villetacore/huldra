@@ -43,6 +43,7 @@ commands:
   cc FILE.c... [-o OUT]
                compile C on the host with hcc (the system C compiler)
   cc-test      compile tests/cc/*.c with hcc and compare with gcc
+  session FILE run one scripted shell session (see tests/*.txt)
 
 options:
   --release    optimized build
@@ -66,7 +67,7 @@ fn main() -> ExitCode {
             }
         };
     }
-    let options = match parse_options(&args[1..]) {
+    let options = match parse_options(if command == "session" { &[] } else { &args[1..] }) {
         Ok(o) => o,
         Err(e) => {
             eprintln!("error: {e}\n\n{USAGE}");
@@ -87,6 +88,7 @@ fn main() -> ExitCode {
         "run" => build(&options).and_then(|a| qemu::run(&a, &options)),
         "test" => test(&options),
         "cc-test" => cc::test(),
+        "session" => session(&args[1..]),
         "iso" => iso(&options),
         "fsck" => {
             let img = target_dir().join("fsck-check.img");
@@ -350,6 +352,16 @@ fn build_with(options: &Options, user_disk: bool) -> Result<Artifacts> {
         initrd: Some(initrd),
         disk: Some(disk_img),
     })
+}
+
+/// `cargo xtask session FILE`: runs one scripted session on a fresh disk.
+fn session(args: &[String]) -> Result {
+    let script = args.first().ok_or("usage: cargo xtask session FILE")?;
+    let mut artifacts = build_with(&Options::default(), false)?;
+    let disk = target_dir().join("session-disk.img");
+    disk::create_image(&disk, &disk_files(&system_files()?)?)?;
+    artifacts.disk = Some(disk);
+    qemu::shell_session(&artifacts, Path::new(script))
 }
 
 fn test(options: &Options) -> Result {

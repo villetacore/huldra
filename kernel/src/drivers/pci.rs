@@ -32,6 +32,40 @@ pub fn read32(bus: u8, slot: u8, function: u8, offset: u8) -> u32 {
     }
 }
 
+pub fn write32(bus: u8, slot: u8, function: u8, offset: u8, value: u32) {
+    let address = 0x8000_0000
+        | (bus as u32) << 16
+        | (slot as u32) << 11
+        | (function as u32) << 8
+        | (offset as u32 & 0xFC);
+    unsafe {
+        outl(0xCF8, address);
+        outl(0xCFC, value);
+    }
+}
+
+impl Device {
+    pub fn read(&self, offset: u8) -> u32 {
+        read32(self.bus, self.slot, self.function, offset)
+    }
+
+    /// Enables memory space, I/O space and bus mastering (DMA).
+    pub fn enable(&self) {
+        let cmd = self.read(0x04);
+        write32(self.bus, self.slot, self.function, 0x04, cmd | 0x7);
+    }
+
+    /// Physical address of memory BAR `n`.
+    pub fn bar_mem(&self, n: u8) -> u64 {
+        let lo = self.read(0x10 + 4 * n);
+        let mut addr = (lo & !0xF) as u64;
+        if lo & 0x6 == 0x4 {
+            addr |= (self.read(0x14 + 4 * n) as u64) << 32;
+        }
+        addr
+    }
+}
+
 pub fn class_name(class: u8, subclass: u8) -> &'static str {
     match (class, subclass) {
         (0x01, 0x01) => "IDE controller",

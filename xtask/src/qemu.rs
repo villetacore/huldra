@@ -42,7 +42,14 @@ fn qemu_binary() -> Result<PathBuf> {
 }
 
 fn base_command(a: &Artifacts, cmdline: Option<&str>) -> Result<Command> {
+    base_command_with_net(a, cmdline, "user,model=e1000")
+}
+
+/// `nic` is QEMU's -nic option: user-mode networking (the guest is
+/// 10.0.2.15, the host 10.0.2.2, DNS 10.0.2.3).
+fn base_command_with_net(a: &Artifacts, cmdline: Option<&str>, nic: &str) -> Result<Command> {
     let mut cmd = Command::new(qemu_binary()?);
+    cmd.args(["-nic", nic]);
     cmd.args(["-m", "256M", "-no-reboot", "-kernel"])
         .arg(&a.kernel);
     cmd.args(["-device", "isa-debug-exit,iobase=0xf4,iosize=0x04"]);
@@ -62,7 +69,8 @@ fn base_command(a: &Artifacts, cmdline: Option<&str>) -> Result<Command> {
 pub fn run(a: &Artifacts, o: &Options) -> Result {
     // Boot from the disk unless told otherwise.
     let cmdline = o.cmdline.clone().unwrap_or_else(|| String::from(if a.disk.is_some() { "root=/dev/hda" } else { "" }));
-    let mut cmd = base_command(a, Some(&cmdline))?;
+    // Forward host port 8080 to the guest's web server.
+    let mut cmd = base_command_with_net(a, Some(&cmdline), "user,model=e1000,hostfwd=tcp:127.0.0.1:8080-:80")?;
     cmd.args(["-serial", "stdio"]);
     if o.headless {
         cmd.args(["-display", "none"]);

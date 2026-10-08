@@ -129,8 +129,12 @@ fn exec_depth(
 
     // Point of no return: switch to the new image.
     let me = sched::current();
-    unsafe { mm.activate() };
+    // Record the new root before loading it: a context switch in between
+    // must not bring the old table back.
+    let irq = crate::arch::irq_save();
     me.cr3.store(mm.root(), Ordering::Release);
+    unsafe { mm.activate() };
+    crate::arch::irq_restore(irq);
     me.set_user();
     super::lifecycle::kill_other_threads(&me);
     let old = me.mm.reset(Some(mm));

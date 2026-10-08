@@ -11,6 +11,7 @@ extern crate alloc;
 pub mod env;
 pub mod fs;
 pub mod io;
+pub mod net;
 pub mod process;
 pub mod signal;
 pub mod sys;

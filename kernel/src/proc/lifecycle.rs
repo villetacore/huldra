@@ -201,8 +201,10 @@ pub fn exit_thread() -> ! {
     }
     clear_child_tid(&me);
     release_vfork(&me);
-    unsafe { crate::mm::vmm::kernel_page_table().activate() };
+    let irq = arch::irq_save();
     me.cr3.store(0, Ordering::Release);
+    unsafe { crate::mm::vmm::kernel_page_table().activate() };
+    arch::irq_restore(irq);
     drop(me.files.reset(FdTable::new()));
     drop(me.mm.reset(None));
     arch::disable_interrupts();
@@ -235,8 +237,10 @@ pub fn exit_process(status: i32) -> ! {
 
     // Close files (may wake pipe readers) and free the address space.
     drop(me.files.reset(FdTable::new()));
-    unsafe { crate::mm::vmm::kernel_page_table().activate() };
+    let irq = arch::irq_save();
     me.cr3.store(0, Ordering::Release);
+    unsafe { crate::mm::vmm::kernel_page_table().activate() };
+    arch::irq_restore(irq);
     drop(me.mm.reset(None));
 
     // Orphans are adopted by init.

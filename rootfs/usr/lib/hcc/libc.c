@@ -683,6 +683,19 @@ char *strerror(int e) {
     case ENOTEMPTY: return "Directory not empty";
     case ELOOP: return "Too many levels of symbolic links";
     case ETIMEDOUT: return "Connection timed out";
+    case ENOTSOCK: return "Socket operation on non-socket";
+    case EMSGSIZE: return "Message too long";
+    case EPROTONOSUPPORT: return "Protocol not supported";
+    case EAFNOSUPPORT: return "Address family not supported by protocol";
+    case EADDRINUSE: return "Address already in use";
+    case EADDRNOTAVAIL: return "Cannot assign requested address";
+    case ENETUNREACH: return "Network is unreachable";
+    case ECONNRESET: return "Connection reset by peer";
+    case EISCONN: return "Transport endpoint is already connected";
+    case ENOTCONN: return "Transport endpoint is not connected";
+    case ECONNREFUSED: return "Connection refused";
+    case EHOSTUNREACH: return "No route to host";
+    case EINPROGRESS: return "Operation now in progress";
     }
     return "Unknown error";
 }
@@ -2976,6 +2989,294 @@ int scanf(const char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
     return vfscanf(stdin, fmt, ap);
+}
+
+/* ---- sockets -------------------------------------------------------------- */
+
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <poll.h>
+
+int poll(struct pollfd *fds, nfds_t n, int timeout) { return __ret(__syscall(7, fds, n, timeout)); }
+int socket(int domain, int type, int protocol) { return __ret(__syscall(41, domain, type, protocol)); }
+int connect(int fd, const struct sockaddr *a, socklen_t len) { return __ret(__syscall(42, fd, a, len)); }
+int accept(int fd, struct sockaddr *a, socklen_t *len) { return __ret(__syscall(43, fd, a, len)); }
+int accept4(int fd, struct sockaddr *a, socklen_t *len, int flags) { return __ret(__syscall(288, fd, a, len, flags)); }
+ssize_t sendto(int fd, const void *buf, size_t n, int flags, const struct sockaddr *to, socklen_t len) { return __ret(__syscall(44, fd, buf, n, flags, to, len)); }
+ssize_t recvfrom(int fd, void *buf, size_t n, int flags, struct sockaddr *from, socklen_t *len) { return __ret(__syscall(45, fd, buf, n, flags, from, len)); }
+ssize_t send(int fd, const void *buf, size_t n, int flags) { return sendto(fd, buf, n, flags, NULL, 0); }
+ssize_t recv(int fd, void *buf, size_t n, int flags) { return recvfrom(fd, buf, n, flags, NULL, NULL); }
+ssize_t sendmsg(int fd, const struct msghdr *m, int flags) { return __ret(__syscall(46, fd, m, flags)); }
+ssize_t recvmsg(int fd, struct msghdr *m, int flags) { return __ret(__syscall(47, fd, m, flags)); }
+int shutdown(int fd, int how) { return __ret(__syscall(48, fd, how)); }
+int bind(int fd, const struct sockaddr *a, socklen_t len) { return __ret(__syscall(49, fd, a, len)); }
+int listen(int fd, int backlog) { return __ret(__syscall(50, fd, backlog)); }
+int getsockname(int fd, struct sockaddr *a, socklen_t *len) { return __ret(__syscall(51, fd, a, len)); }
+int getpeername(int fd, struct sockaddr *a, socklen_t *len) { return __ret(__syscall(52, fd, a, len)); }
+int setsockopt(int fd, int level, int name, const void *v, socklen_t len) { return __ret(__syscall(54, fd, level, name, v, len)); }
+int getsockopt(int fd, int level, int name, void *v, socklen_t *len) { return __ret(__syscall(55, fd, level, name, v, len)); }
+
+uint16_t htons(uint16_t x) { return (uint16_t)((x << 8) | (x >> 8)); }
+uint16_t ntohs(uint16_t x) { return htons(x); }
+uint32_t htonl(uint32_t x) { return (x >> 24) | ((x >> 8) & 0xff00) | ((x << 8) & 0xff0000) | (x << 24); }
+uint32_t ntohl(uint32_t x) { return htonl(x); }
+
+int inet_aton(const char *s, struct in_addr *a) {
+    unsigned long parts[4];
+    int n = 0;
+    while (n < 4) {
+        char *end;
+        if (!isdigit(*s))
+            return 0;
+        parts[n++] = strtoul(s, &end, 10);
+        if (parts[n - 1] > 255)
+            return 0;
+        s = end;
+        if (*s != '.')
+            break;
+        s++;
+    }
+    if (*s || n != 4)
+        return 0;
+    a->s_addr = htonl((uint32_t)(parts[0] << 24 | parts[1] << 16 | parts[2] << 8 | parts[3]));
+    return 1;
+}
+
+in_addr_t inet_addr(const char *s) {
+    struct in_addr a;
+    return inet_aton(s, &a) ? a.s_addr : INADDR_NONE;
+}
+
+char *inet_ntoa(struct in_addr a) {
+    static char buf[16];
+    unsigned char *b = (unsigned char *)&a.s_addr;
+    snprintf(buf, sizeof buf, "%d.%d.%d.%d", b[0], b[1], b[2], b[3]);
+    return buf;
+}
+
+int inet_pton(int af, const char *s, void *dst) {
+    if (af != AF_INET) {
+        errno = EAFNOSUPPORT;
+        return -1;
+    }
+    return inet_aton(s, dst);
+}
+
+const char *inet_ntop(int af, const void *src, char *dst, socklen_t n) {
+    if (af != AF_INET) {
+        errno = EAFNOSUPPORT;
+        return NULL;
+    }
+    const unsigned char *b = src;
+    if (snprintf(dst, n, "%d.%d.%d.%d", b[0], b[1], b[2], b[3]) >= (int)n) {
+        errno = ENOSPC;
+        return NULL;
+    }
+    return dst;
+}
+
+int h_errno;
+
+/* /etc/hosts, then DNS servers from /etc/resolv.conf or /proc/net/dns. */
+static int __hosts_lookup(const char *name, struct in_addr *out) {
+    FILE *f = fopen("/etc/hosts", "r");
+    char line[256];
+    if (!f)
+        return 0;
+    while (fgets(line, sizeof line, f)) {
+        char *save, *addr = strtok_r(line, " \t\n", &save);
+        if (!addr || addr[0] == '#')
+            continue;
+        for (char *n = strtok_r(NULL, " \t\n", &save); n && n[0] != '#'; n = strtok_r(NULL, " \t\n", &save)) {
+            if (strcasecmp(n, name) == 0 && inet_aton(addr, out)) {
+                fclose(f);
+                return 1;
+            }
+        }
+    }
+    fclose(f);
+    return 0;
+}
+
+static int __nameserver(struct in_addr *out) {
+    const char *files[] = {"/etc/resolv.conf", "/proc/net/dns"};
+    char line[256];
+    for (int i = 0; i < 2; i++) {
+        FILE *f = fopen(files[i], "r");
+        if (!f)
+            continue;
+        while (fgets(line, sizeof line, f)) {
+            char *save, *key = strtok_r(line, " \t\n", &save);
+            char *val = key ? strtok_r(NULL, " \t\n", &save) : NULL;
+            if (key && val && strcmp(key, "nameserver") == 0 && inet_aton(val, out)) {
+                fclose(f);
+                return 1;
+            }
+        }
+        fclose(f);
+    }
+    return 0;
+}
+
+static int __dns_lookup(const char *name, struct in_addr *out) {
+    struct in_addr server;
+    if (!__nameserver(&server))
+        return EAI_FAIL;
+    unsigned char q[512], r[1500];
+    unsigned short id = (unsigned short)(getpid() * 31 + time(NULL));
+    int n = 12;
+    memset(q, 0, 12);
+    q[0] = id >> 8;
+    q[1] = id & 0xff;
+    q[2] = 1;
+    q[5] = 1;
+    const char *p = name;
+    while (*p) {
+        size_t len = strcspn(p, ".");
+        if (len == 0 || len > 63 || n + len + 6 > sizeof q)
+            return EAI_NONAME;
+        q[n++] = (unsigned char)len;
+        memcpy(q + n, p, len);
+        n += len;
+        p += len;
+        if (*p == '.')
+            p++;
+    }
+    q[n++] = 0;
+    q[n++] = 0;
+    q[n++] = 1;
+    q[n++] = 0;
+    q[n++] = 1;
+    int s = socket(AF_INET, SOCK_DGRAM, 0);
+    if (s < 0)
+        return EAI_SYSTEM;
+    struct timeval tv = {2, 0};
+    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+    struct sockaddr_in sa = {0};
+    sa.sin_family = AF_INET;
+    sa.sin_port = htons(53);
+    sa.sin_addr = server;
+    int result = EAI_AGAIN;
+    for (int attempt = 0; attempt < 3 && result == EAI_AGAIN; attempt++) {
+        sendto(s, q, n, 0, (struct sockaddr *)&sa, sizeof sa);
+        ssize_t got = recv(s, r, sizeof r, 0);
+        if (got < 12 || r[0] != q[0] || r[1] != q[1])
+            continue;
+        if ((r[3] & 15) == 3) {
+            result = EAI_NONAME;
+            break;
+        }
+        int an = r[6] << 8 | r[7];
+        int i = n; /* skip our question, echoed back */
+        result = EAI_NONAME;
+        for (int k = 0; k < an && i + 12 <= got; k++) {
+            while (i < got && r[i] && (r[i] & 0xC0) != 0xC0)
+                i += r[i] + 1;
+            i += (i < got && r[i]) ? 2 : 1;
+            int type = r[i] << 8 | r[i + 1];
+            int len = r[i + 8] << 8 | r[i + 9];
+            if (type == 1 && len == 4 && i + 14 <= got) {
+                memcpy(&out->s_addr, r + i + 10, 4);
+                result = 0;
+                break;
+            }
+            i += 10 + len;
+        }
+    }
+    close(s);
+    return result;
+}
+
+static int __resolve(const char *name, struct in_addr *out) {
+    if (inet_aton(name, out))
+        return 0;
+    if (__hosts_lookup(name, out))
+        return 0;
+    return __dns_lookup(name, out);
+}
+
+struct hostent *gethostbyname(const char *name) {
+    static struct hostent h;
+    static struct in_addr addr;
+    static char *list[2];
+    static char hname[256];
+    int r = __resolve(name, &addr);
+    if (r != 0) {
+        h_errno = r == EAI_AGAIN ? TRY_AGAIN : HOST_NOT_FOUND;
+        return NULL;
+    }
+    strncpy(hname, name, sizeof hname - 1);
+    list[0] = (char *)&addr;
+    list[1] = NULL;
+    h.h_name = hname;
+    h.h_aliases = list + 1;
+    h.h_addrtype = AF_INET;
+    h.h_length = 4;
+    h.h_addr_list = list;
+    return &h;
+}
+
+int getaddrinfo(const char *node, const char *service, const struct addrinfo *hints, struct addrinfo **res) {
+    struct in_addr addr;
+    int socktype = hints ? hints->ai_socktype : 0;
+    if (hints && hints->ai_family != AF_UNSPEC && hints->ai_family != AF_INET)
+        return EAI_FAMILY;
+    if (node) {
+        int r = (hints && (hints->ai_flags & AI_NUMERICHOST)) ? (inet_aton(node, &addr) ? 0 : EAI_NONAME) : __resolve(node, &addr);
+        if (r)
+            return r;
+    } else {
+        addr.s_addr = (hints && (hints->ai_flags & AI_PASSIVE)) ? htonl(INADDR_ANY) : htonl(INADDR_LOOPBACK);
+    }
+    int port = 0;
+    if (service) {
+        char *end;
+        port = (int)strtol(service, &end, 10);
+        if (*end) {
+            if (strcmp(service, "http") == 0)
+                port = 80;
+            else if (strcmp(service, "https") == 0)
+                port = 443;
+            else
+                return EAI_SERVICE;
+        }
+    }
+    struct addrinfo *ai = calloc(1, sizeof(struct addrinfo) + sizeof(struct sockaddr_in));
+    if (!ai)
+        return EAI_MEMORY;
+    struct sockaddr_in *sa = (struct sockaddr_in *)(ai + 1);
+    sa->sin_family = AF_INET;
+    sa->sin_port = htons((uint16_t)port);
+    sa->sin_addr = addr;
+    ai->ai_family = AF_INET;
+    ai->ai_socktype = socktype ? socktype : SOCK_STREAM;
+    ai->ai_protocol = hints ? hints->ai_protocol : 0;
+    ai->ai_addrlen = sizeof(struct sockaddr_in);
+    ai->ai_addr = (struct sockaddr *)sa;
+    *res = ai;
+    return 0;
+}
+
+void freeaddrinfo(struct addrinfo *res) {
+    while (res) {
+        struct addrinfo *next = res->ai_next;
+        free(res);
+        res = next;
+    }
+}
+
+const char *gai_strerror(int err) {
+    switch (err) {
+    case EAI_NONAME: return "Name or service not known";
+    case EAI_AGAIN: return "Temporary failure in name resolution";
+    case EAI_FAIL: return "Non-recoverable failure in name resolution";
+    case EAI_FAMILY: return "Address family not supported";
+    case EAI_SERVICE: return "Servname not supported";
+    case EAI_MEMORY: return "Memory allocation failure";
+    }
+    return "Unknown error";
 }
 
 /* ---- program entry -------------------------------------------------------- */

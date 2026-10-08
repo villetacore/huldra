@@ -1,0 +1,6 @@
+[package]
+name = "huldra-net"
+description = "TCP/IP: packet formats, TCP, ARP, DHCP and DNS, independent of drivers"
+version.workspace = true
+edition.workspace = true
+license.workspace = true

@@ -1,0 +1,7 @@
+[build]
+target = "x86_64-unknown-none"
+
+[target.x86_64-unknown-none]
+rustflags = ["-C", "relocation-model=static"]
+# `cargo run` boots the kernel in QEMU via the PVH entry point.
+runner = "qemu-system-x86_64 -m 256M -serial stdio -no-reboot -kernel"

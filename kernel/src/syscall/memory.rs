@@ -30,6 +30,18 @@ pub fn mmap(a: &mut Args) -> KResult<Ret> {
     if len == 0 || offset % PAGE_SIZE != 0 {
         return Err(Errno::EINVAL);
     }
+    if flags & MAP_ANONYMOUS == 0 {
+        let f = sched::current().files.lock().get(fd)?;
+        if let Some((phys, size)) = f.inode.mmap_phys() {
+            if offset + len > size {
+                return Err(Errno::EINVAL);
+            }
+            let me = sched::current();
+            let mut mm = me.mm.lock();
+            let mm = mm.as_mut().ok_or(Errno::ENOMEM)?;
+            return value(mm.mmap_device(hint, len, prot, phys + offset)?);
+        }
+    }
     let file = if flags & MAP_ANONYMOUS == 0 {
         if flags & MAP_SHARED != 0 {
             return Err(Errno::ENODEV); // shared file mappings need a page cache

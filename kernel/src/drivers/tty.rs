@@ -11,7 +11,7 @@ use crate::sync::SpinLock;
 use crate::task::wait::WaitQueue;
 use crate::task::Pid;
 use alloc::collections::VecDeque;
-use alloc::sync::Arc;
+use alloc::sync::{Arc, Weak};
 use alloc::vec::Vec;
 use core::any::Any;
 use huldra_abi::errno::Errno;
@@ -31,12 +31,23 @@ struct State {
     eof_marks: VecDeque<usize>,
     foreground: Pid,
     session: Pid,
+    winsize: Winsize,
+    /// The other side of a pseudo-terminal went away: reads return 0.
+    hung_up: bool,
+}
+
+/// Where a terminal's output goes.
+pub enum Output {
+    Console,
+    Pty(Weak<super::pty::PtyMaster>),
 }
 
 pub struct Tty {
     ino: u64,
+    rdev: u64,
     state: SpinLock<State>,
     readers: WaitQueue,
+    output: Output,
 }
 
 static CONSOLE: SpinLock<Option<Arc<Tty>>> = SpinLock::new(None);
@@ -45,38 +56,95 @@ pub fn console() -> Arc<Tty> {
     CONSOLE.lock().clone().expect("tty not initialized")
 }
 
+impl Tty {
+    pub fn new(rdev: u64, output: Output, winsize: Winsize) -> Tty {
+        Tty {
+            ino: crate::fs::devfs::dev_ino(),
+            rdev,
+            state: SpinLock::new(State {
+                termios: Termios::sane(),
+                line: Vec::new(),
+                ready: VecDeque::new(),
+                eof_marks: VecDeque::new(),
+                foreground: 0,
+                session: 0,
+                winsize,
+                hung_up: false,
+            }),
+            readers: WaitQueue::new(),
+            output,
+        }
+    }
+
+    /// Output processing (ONLCR) and delivery to the console or pty master.
+    fn emit(&self, t: &Termios, bytes: &[u8]) {
+        match &self.output {
+            Output::Console => crate::console::write_bytes(bytes),
+            Output::Pty(m) => {
+                if let Some(m) = m.upgrade() {
+                    if t.c_oflag & OPOST != 0 && t.c_oflag & ONLCR != 0 {
+                        let mut v = Vec::with_capacity(bytes.len() + 8);
+                        for &b in bytes {
+                            if b == b'\n' {
+                                v.push(b'\r');
+                            }
+                            v.push(b);
+                        }
+                        m.push(&v);
+                    } else {
+                        m.push(bytes);
+                    }
+                }
+            }
+        }
+    }
+
+    fn echo_char(&self, t: &Termios, c: u8) {
+        if t.c_lflag & ECHO == 0 {
+            return;
+        }
+        if c < 0x20 && c != b'\n' && c != b'\t' && t.c_lflag & ECHOCTL != 0 {
+            self.emit(t, &[b'^', c + 0x40]);
+        } else {
+            self.emit(t, &[c]);
+        }
+    }
+
+    /// The pty master closed.
+    pub fn hang_up(&self) {
+        let fg = {
+            let mut s = self.state.lock();
+            s.hung_up = true;
+            s.foreground
+        };
+        self.readers.wake_all();
+        if fg != 0 {
+            crate::proc::signal::send_to_group(fg, huldra_abi::signal::SIGHUP);
+        }
+    }
+
+    pub fn set_winsize(&self, w: Winsize) {
+        let fg = {
+            let mut s = self.state.lock();
+            s.winsize = w;
+            s.foreground
+        };
+        if fg != 0 {
+            crate::proc::signal::send_to_group(fg, huldra_abi::signal::SIGWINCH);
+        }
+    }
+
+    pub fn winsize(&self) -> Winsize {
+        self.state.lock().winsize
+    }
+}
+
 pub fn init() {
-    let tty = Arc::new(Tty {
-        ino: crate::fs::devfs::dev_ino(),
-        state: SpinLock::new(State {
-            termios: Termios::sane(),
-            line: Vec::new(),
-            ready: VecDeque::new(),
-            eof_marks: VecDeque::new(),
-            foreground: 0,
-            session: 0,
-        }),
-        readers: WaitQueue::new(),
-    });
+    let tty = Arc::new(Tty::new(makedev(5, 1), Output::Console, Winsize { ws_row: 25, ws_col: 80, ws_xpixel: 0, ws_ypixel: 0 }));
     *CONSOLE.lock() = Some(tty.clone());
     crate::fs::devfs::register("console", tty.clone());
     crate::fs::devfs::register("tty", tty.clone());
     crate::fs::devfs::register("tty0", tty);
-}
-
-fn echo(bytes: &[u8]) {
-    crate::console::write_bytes(bytes);
-}
-
-fn echo_char(t: &Termios, c: u8) {
-    if t.c_lflag & ECHO == 0 {
-        return;
-    }
-    if c < 0x20 && c != b'\n' && c != b'\t' && t.c_lflag & ECHOCTL != 0 {
-        echo(&[b'^', c + 0x40]);
-    } else {
-        echo(&[c]);
-    }
 }
 
 /// Feeds one input byte from a keyboard or serial interrupt.
@@ -88,7 +156,7 @@ pub fn input(c: u8) {
 }
 
 impl Tty {
-    fn receive(&self, mut c: u8) {
+    pub fn receive(&self, mut c: u8) {
         let mut signal = None;
         {
             let mut s = self.state.lock();
@@ -102,19 +170,19 @@ impl Tty {
                     s.foreground,
                 ));
                 s.line.clear();
-                echo_char(&t, c);
+                self.echo_char(&t, c);
                 if t.c_lflag & ECHO != 0 {
-                    echo(b"\n");
+                    self.emit(&t, b"\n");
                 }
             } else if t.c_lflag & ICANON != 0 {
                 if c == t.c_cc[VERASE] || c == 0x08 {
                     if s.line.pop().is_some() && t.c_lflag & ECHOE != 0 {
-                        echo(b"\x08 \x08");
+                        self.emit(&t, b"\x08 \x08");
                     }
                 } else if c == t.c_cc[VKILL] {
                     while s.line.pop().is_some() {
                         if t.c_lflag & ECHOK != 0 {
-                            echo(b"\x08 \x08");
+                            self.emit(&t, b"\x08 \x08");
                         }
                     }
                 } else if c == t.c_cc[VEOF] {
@@ -128,16 +196,16 @@ impl Tty {
                     if s.ready.len() + line.len() <= MAX_INPUT {
                         s.ready.extend(line);
                     }
-                    echo_char(&t, b'\n');
+                    self.echo_char(&t, b'\n');
                 } else if s.line.len() < MAX_LINE {
                     s.line.push(c);
-                    echo_char(&t, c);
+                    self.echo_char(&t, c);
                 }
             } else {
                 if s.ready.len() < MAX_INPUT {
                     s.ready.push_back(c);
                 }
-                echo_char(&t, c);
+                self.echo_char(&t, c);
             }
         }
         if let Some((sig, pgrp)) = signal {
@@ -164,7 +232,7 @@ impl Tty {
 impl Inode for Tty {
     fn metadata(&self) -> Metadata {
         let mut m = Metadata::new(0, self.ino, FileType::CharDevice, 0o620);
-        m.rdev = makedev(5, 1);
+        m.rdev = self.rdev;
         m
     }
 
@@ -201,7 +269,7 @@ impl Inode for Tty {
                 return Some(0);
             }
             if s.ready.is_empty() {
-                return None;
+                return s.hung_up.then_some(0);
             }
             let limit = s.eof_marks.front().copied().unwrap_or(usize::MAX);
             let mut n = 0;
@@ -221,7 +289,14 @@ impl Inode for Tty {
     }
 
     fn write_at(&self, _offset: u64, buf: &[u8]) -> KResult<usize> {
-        crate::console::write_bytes(buf);
+        let t = {
+            let s = self.state.lock();
+            if s.hung_up {
+                return Err(Errno::EIO);
+            }
+            s.termios
+        };
+        self.emit(&t, buf);
         Ok(buf.len())
     }
 
@@ -265,15 +340,12 @@ impl Inode for Tty {
             }
             TIOCSCTTY => Ok(0),
             TIOCGWINSZ => {
-                write_user(
-                    arg,
-                    &Winsize {
-                        ws_row: 25,
-                        ws_col: 80,
-                        ws_xpixel: 0,
-                        ws_ypixel: 0,
-                    },
-                )?;
+                write_user(arg, &self.winsize())?;
+                Ok(0)
+            }
+            TIOCSWINSZ => {
+                let w: Winsize = read_user(arg)?;
+                self.set_winsize(w);
                 Ok(0)
             }
             FIONREAD => {
@@ -296,7 +368,7 @@ impl Inode for Tty {
         } else {
             !s.ready.is_empty()
         };
-        PollState { readable, writable: true, hangup: false }
+        PollState { readable: readable || s.hung_up, writable: true, hangup: s.hung_up }
     }
 
     fn as_any(&self) -> &dyn Any {

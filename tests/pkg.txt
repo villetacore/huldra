@@ -1,5 +1,6 @@
 # Package manager against the repository served by xtask (10.0.2.2:8800).
 > until grep -q bound /proc/net/if; do sleep 0.2; done
+> echo "repo = http://10.0.2.2:8801" > /etc/pkg.conf
 > pkg install hello
 < no package index
 > pkg update

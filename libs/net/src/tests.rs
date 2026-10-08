@@ -10,9 +10,10 @@ struct Wire {
     a: Stack,
     b: Stack,
     now: u64,
-    /// Drop every n-th frame (both directions).
+    /// Drop about one frame in n (both directions), pseudo-randomly.
     drop_every: Option<usize>,
     frames: usize,
+    rng: u32,
 }
 
 const A: Ip = Ip([10, 0, 0, 1]);
@@ -25,7 +26,13 @@ impl Wire {
         let mut b = Stack::new(Some(Mac([2, 0, 0, 0, 0, 2])), 2);
         a.configure(IfConfig { ip: A, netmask: MASK, ..Default::default() });
         b.configure(IfConfig { ip: B, netmask: MASK, ..Default::default() });
-        Wire { a, b, now: 0, drop_every: None, frames: 0 }
+        Wire { a, b, now: 0, drop_every: None, frames: 0, rng: 12345 }
+    }
+
+    fn lose(&mut self) -> bool {
+        self.frames += 1;
+        self.rng = self.rng.wrapping_mul(1103515245).wrapping_add(12345);
+        self.drop_every.is_some_and(|n| (self.rng >> 16) as usize % n == 0)
     }
 
     fn step(&mut self) {
@@ -35,15 +42,13 @@ impl Wire {
             let mut moved = false;
             while let Some(f) = self.a.transmit() {
                 moved = true;
-                self.frames += 1;
-                if self.drop_every.is_none_or(|n| self.frames % n != 0) {
+                if !self.lose() {
                     self.b.receive(&f, self.now);
                 }
             }
             while let Some(f) = self.b.transmit() {
                 moved = true;
-                self.frames += 1;
-                if self.drop_every.is_none_or(|n| self.frames % n != 0) {
+                if !self.lose() {
                     self.a.receive(&f, self.now);
                 }
             }
@@ -81,9 +86,28 @@ fn transfer(drop_every: Option<usize>, size: usize) {
     w.b.listen(server, 4).unwrap();
     let client = w.a.socket(Proto::Tcp);
     w.a.connect(client, B, 80, w.now).unwrap();
-    w.run(5000);
+    // With loss the handshake may need a few retransmissions; the server
+    // side completes when the client's first data carries the ACK.
+    let mut conn = None;
+    for _ in 0..6000 {
+        w.run(10);
+        if conn.is_none() {
+            conn = w.b.accept(server).ok();
+        }
+        if conn.is_some() && w.a.connect_result(client).is_some() {
+            break;
+        }
+    }
     assert_eq!(w.a.connect_result(client), Some(Ok(())));
-    let conn = w.b.accept(server).unwrap();
+    let conn = match conn {
+        Some(c) => c,
+        None => {
+            // Final ACK lost: data makes the server side established.
+            w.a.send(client, b"", w.now).ok();
+            w.run(5000);
+            w.b.accept(server).unwrap()
+        }
+    };
     assert_eq!(w.b.peer_addr(conn).map(|p| p.0), Some(A));
 
     let data: Vec<u8> = (0..size).map(|i| (i * 7 + i / 251) as u8).collect();
@@ -259,4 +283,38 @@ fn dhcp_client() {
     let f = s.transmit().unwrap();
     assert_eq!(Eth::parse(&f).unwrap().dst, server_mac);
     let _ = vec![0u8];
+}
+
+/// A reader that drains in small chunks must not leave the sender waiting
+/// for retransmission timers (window updates must be sent).
+#[test]
+fn tcp_slow_reader_window_updates() {
+    let mut w = Wire::new();
+    let l = w.b.socket(Proto::Tcp);
+    w.b.bind(l, Ip::UNSPECIFIED, 9).unwrap();
+    w.b.listen(l, 1).unwrap();
+    let c = w.a.socket(Proto::Tcp);
+    w.a.connect(c, B, 9, w.now).unwrap();
+    w.run(50);
+    let s = w.b.accept(l).unwrap();
+    let data = vec![7u8; 400_000];
+    let mut sent = 0;
+    let mut got = 0;
+    let start = w.now;
+    let mut buf = [0u8; 16384];
+    while got < data.len() {
+        if sent < data.len() {
+            if let Ok(n) = w.a.send(c, &data[sent..], w.now) {
+                sent += n;
+            }
+        }
+        // Read one chunk per step, like a program parsing messages.
+        if let Ok(n) = w.b.recv(s, &mut buf[..4000]) {
+            got += n;
+        }
+        w.step();
+        w.now += 1;
+        assert!(w.now - start < 20_000, "stalled: {got} of {} bytes", data.len());
+    }
+    assert!(w.now - start < 1_000, "slow transfer: {} ms", w.now - start);
 }

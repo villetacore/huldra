@@ -117,6 +117,10 @@ pub fn handle_page_fault(frame: &mut TrapFrame) -> bool {
         return true;
     }
     if frame.from_user() {
+        let area = me.mm.lock().as_ref().and_then(|mm| mm.find(addr).copied());
+        if let Some(v) = area {
+            kdebug!("fault in area {:#x}..{:#x} prot {} {:?}", v.start, v.end, v.prot, v.kind);
+        }
         kinfo!(
             "{}[{}]: segfault at {:#x} ip {:#x} ({})",
             me.name(),

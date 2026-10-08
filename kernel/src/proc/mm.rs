@@ -25,6 +25,9 @@ pub enum VmaKind {
     Heap,
     Stack,
     Anonymous,
+    /// Device memory (a frame buffer): the physical address of `start`.
+    /// Pages are mapped up front, shared by `fork`, never freed.
+    Device(u64),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -33,6 +36,17 @@ pub struct Vma {
     pub end: u64,
     pub prot: u32,
     pub kind: VmaKind,
+}
+
+impl Vma {
+    /// The part `[start, end)` of this area.
+    fn part(&self, start: u64, end: u64) -> Vma {
+        let kind = match self.kind {
+            VmaKind::Device(p) => VmaKind::Device(p + (start - self.start)),
+            k => k,
+        };
+        Vma { start, end, prot: self.prot, kind }
+    }
 }
 
 pub struct MemorySpace {
@@ -195,14 +209,29 @@ impl MemorySpace {
         Ok(())
     }
 
-    fn unmap_pages(&mut self, start: u64, end: u64) {
+    fn unmap_pages(&mut self, start: u64, end: u64, free: bool) {
         let mut page = start;
         while page < end {
             if let Some(f) = self.pt.unmap(page) {
-                frame::free(f);
+                if free {
+                    frame::free(f);
+                }
             }
             page += PAGE_SIZE;
         }
+    }
+
+    /// Maps device memory at `phys` (page aligned) into the address space.
+    pub fn mmap_device(&mut self, hint: u64, len: u64, prot: u32, phys: u64) -> KResult<u64> {
+        let len = align_up(len, PAGE_SIZE);
+        let addr = if hint != 0 && hint % PAGE_SIZE == 0 && hint >= USER_MIN && hint + len <= MMAP_TOP && !self.overlaps(hint, hint + len) { hint } else { self.find_gap(len)? };
+        self.add_vma(addr, addr + len, prot, VmaKind::Device(phys))?;
+        let mut off = 0;
+        while off < len {
+            self.pt.map(addr + off, phys + off, pte_flags(prot)).map_err(|_| Errno::ENOMEM)?;
+            off += PAGE_SIZE;
+        }
+        Ok(addr)
     }
 
     /// Removes `[start, end)` from the address space, splitting areas.
@@ -216,12 +245,13 @@ impl MemorySpace {
         for v in affected {
             self.vmas.remove(&v.start);
             if v.start < start {
-                self.vmas.insert(v.start, Vma { end: start, ..v });
+                self.vmas.insert(v.start, v.part(v.start, start));
             }
             if v.end > end {
-                self.vmas.insert(end, Vma { start: end, ..v });
+                self.vmas.insert(end, v.part(end, v.end));
             }
-            self.unmap_pages(v.start.max(start), v.end.min(end));
+            let device = matches!(v.kind, VmaKind::Device(_));
+            self.unmap_pages(v.start.max(start), v.end.min(end), !device);
         }
     }
 
@@ -237,21 +267,13 @@ impl MemorySpace {
         for v in affected {
             self.vmas.remove(&v.start);
             if v.start < start {
-                self.vmas.insert(v.start, Vma { end: start, ..v });
+                self.vmas.insert(v.start, v.part(v.start, start));
             }
             if v.end > end {
-                self.vmas.insert(end, Vma { start: end, ..v });
+                self.vmas.insert(end, v.part(end, v.end));
             }
             let (s, e) = (v.start.max(start), v.end.min(end));
-            self.vmas.insert(
-                s,
-                Vma {
-                    start: s,
-                    end: e,
-                    prot,
-                    kind: v.kind,
-                },
-            );
+            self.vmas.insert(s, Vma { prot, ..v.part(s, e) });
             let mut page = s;
             while page < e {
                 self.pt.set_flags(page, pte_flags(prot));
@@ -347,6 +369,14 @@ impl MemorySpace {
         child.brk = self.brk;
         for v in self.vmas.values() {
             child.vmas.insert(v.start, *v);
+            if let VmaKind::Device(phys) = v.kind {
+                let mut off = 0;
+                while v.start + off < v.end {
+                    child.pt.map(v.start + off, phys + off, pte_flags(v.prot)).map_err(|_| Errno::ENOMEM)?;
+                    off += PAGE_SIZE;
+                }
+                continue;
+            }
             let mut page = v.start;
             while page < v.end {
                 if let Some((pa, flags)) = self.pt.translate(page) {
@@ -377,6 +407,11 @@ impl MemorySpace {
 impl Drop for MemorySpace {
     fn drop(&mut self) {
         debug_assert!(!self.pt.is_active(), "dropping the active address space");
+        // Device pages are not ours to free.
+        let devices: alloc::vec::Vec<Vma> = self.vmas.values().filter(|v| matches!(v.kind, VmaKind::Device(_))).copied().collect();
+        for v in devices {
+            self.unmap_pages(v.start, v.end, false);
+        }
         unsafe {
             self.pt.free_user_half();
             frame::free(self.pt.root());

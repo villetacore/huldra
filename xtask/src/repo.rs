@@ -12,6 +12,8 @@ use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 
 pub const PORT: u16 = 8800;
+/// Tests use their own server, so a `run` session elsewhere does not matter.
+pub const TEST_PORT: u16 = 8801;
 
 fn tree(dir: &Path, prefix: &str, out: &mut Vec<PkgFile>) -> Result {
     let mut entries: Vec<_> = fs::read_dir(dir).map_err(|e| format!("{}: {e}", dir.display()))?.flatten().collect();

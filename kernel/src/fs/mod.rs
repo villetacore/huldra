@@ -106,6 +106,10 @@ pub fn open(path: &str, flags: u32, perm: u32) -> KResult<Arc<OpenFile>> {
         }
         Err(e) => return Err(e),
     };
+    let inode = match inode.open_instance() {
+        Some(r) => r?,
+        None => inode,
+    };
     let meta = inode.metadata();
     if flags & O_DIRECTORY != 0 && !meta.is_dir() {
         return Err(Errno::ENOTDIR);

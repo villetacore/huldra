@@ -108,3 +108,6 @@ mod tests {
         assert_eq!(v, [&b"hello"[..], &b"dir"[..]]);
     }
 }
+pub const TIOCSWINSZ: u32 = 0x5414;
+pub const TIOCGPTN: u32 = 0x8004_5430;
+pub const TIOCSPTLCK: u32 = 0x4004_5431;

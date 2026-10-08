@@ -89,7 +89,7 @@ fn main() -> ExitCode {
             }
         }),
         "run" => build(&options).and_then(|a| {
-            start_repo_server();
+            start_repo_server(repo::PORT);
             qemu::run(&a, &options)
         }),
         "repo" => repo::build().map(drop),
@@ -367,7 +367,7 @@ fn build_with(options: &Options, user_disk: bool) -> Result<Artifacts> {
 fn session(args: &[String]) -> Result {
     let script = args.first().ok_or("usage: cargo xtask session FILE")?;
     let mut artifacts = build_with(&Options::default(), false)?;
-    start_repo_server();
+    start_repo_server(repo::TEST_PORT);
     let disk = target_dir().join("session-disk.img");
     disk::create_image(&disk, &disk_files(&system_files()?)?)?;
     artifacts.disk = Some(disk);
@@ -375,11 +375,11 @@ fn session(args: &[String]) -> Result {
 }
 
 /// Builds the package repository and serves it while QEMU runs.
-fn start_repo_server() {
+fn start_repo_server(port: u16) {
     match repo::build() {
         Ok(dir) => {
-            if !repo::serve_background(dir, repo::PORT) {
-                println!("(port {} busy: another xtask is serving packages)", repo::PORT);
+            if !repo::serve_background(dir, port) {
+                println!("(port {} busy: another xtask is serving packages)", port);
             }
         }
         Err(e) => println!("(package repository not built: {e})"),
@@ -402,7 +402,7 @@ fn test(options: &Options) -> Result {
     cc::test()?;
 
     let mut artifacts = build_with(options, false)?;
-    start_repo_server();
+    start_repo_server(repo::TEST_PORT);
     let test_disk = target_dir().join("test-disk.img");
     disk::create_image(&test_disk, &disk_files(&system_files()?)?)?;
     artifacts.disk = Some(test_disk.clone());
@@ -414,6 +414,9 @@ fn test(options: &Options) -> Result {
 
     println!("==> reboot: data on the root disk persists");
     qemu::shell_session(&artifacts, &root().join("tests").join("persist.txt"))?;
+
+    println!("==> graphics");
+    qemu::shell_session(&artifacts, &root().join("tests").join("gui.txt"))?;
 
     println!("==> package manager");
     qemu::shell_session(&artifacts, &root().join("tests").join("pkg.txt"))?;

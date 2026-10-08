@@ -1,0 +1,12 @@
+# Graphics: the display server, a window manager and screenshots.
+> ls /dev/fb0 /dev/font /dev/kbd /dev/mouse /dev/ptmx
+< /dev/ptmx
+> display > /tmp/display.log & sleep 1; screenshot /tmp/s.ppm
+< saved 1024x768 to /tmp/s.ppm
+> guitest
+< guitest: all checks passed
+! FAIL
+> sleep 1; cat /tmp/display.log
+< display: exiting
+> echo console is back
+< console is back

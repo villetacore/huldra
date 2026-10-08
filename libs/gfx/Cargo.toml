@@ -1,0 +1,6 @@
+[package]
+name = "huldra-gfx"
+description = "Graphics for Huldra: drawing, fonts, the display protocol, a terminal emulator core, keymaps and tiling layout"
+version.workspace = true
+edition.workspace = true
+license.workspace = true

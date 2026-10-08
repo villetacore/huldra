@@ -263,3 +263,13 @@ pub fn http_get(url: &str, mut progress: impl FnMut(usize, Option<usize>)) -> Re
     let headers = lines.filter_map(|l| l.split_once(':').map(|(k, v)| (String::from(k.trim()), String::from(v.trim())))).collect();
     Ok(HttpResponse { status, headers, body: data[h..].to_vec() })
 }
+
+/// `recv` with flags (`MSG_DONTWAIT`...).
+pub fn recv_flags(s: &Socket, buf: &mut [u8], flags: u32) -> Result<usize> {
+    unsafe { call(nr::RECVFROM, [s.fd as usize, buf.as_mut_ptr() as usize, buf.len(), flags as usize, 0, 0]) }
+}
+
+/// `send` with flags; `MSG_NOSIGNAL` is always added.
+pub fn send_flags(s: &Socket, data: &[u8], flags: u32) -> Result<usize> {
+    unsafe { call(nr::SENDTO, [s.fd as usize, data.as_ptr() as usize, data.len(), (flags | MSG_NOSIGNAL) as usize, 0, 0]) }
+}

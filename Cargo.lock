@@ -27,6 +27,10 @@ name = "huldra-ext2"
 version = "0.2.0"
 
 [[package]]
+name = "huldra-gfx"
+version = "0.2.0"
+
+[[package]]
 name = "huldra-hcc"
 version = "0.2.0"
 
@@ -64,6 +68,7 @@ version = "0.2.0"
 dependencies = [
  "huldra-abi",
  "huldra-archive",
+ "huldra-gfx",
  "huldra-hcc",
  "huldra-kalloc",
  "huldra-net",

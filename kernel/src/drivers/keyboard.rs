@@ -67,6 +67,10 @@ pub fn handle_irq() {
     let extended = core::mem::replace(&mut kbd.extended, false);
     let released = scancode & 0x80 != 0;
     let code = scancode & 0x7F;
+    // A graphical program reading /dev/kbd gets raw key events instead.
+    if super::input::keyboard_event(code, extended, !released) {
+        return;
+    }
 
     match code {
         0x2A | 0x36 => kbd.shift = !released,

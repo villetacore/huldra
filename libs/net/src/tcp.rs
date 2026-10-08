@@ -69,6 +69,8 @@ pub struct Tcb {
     retries: u32,
     time_wait_until: u64,
     ack_now: bool,
+    /// Receive window in the last segment we sent.
+    advertised: core::cell::Cell<usize>,
     out: Vec<Segment>,
     pub error: Option<TcpError>,
 }
@@ -96,6 +98,7 @@ impl Tcb {
             retries: 0,
             time_wait_until: 0,
             ack_now: false,
+            advertised: core::cell::Cell::new(BUFFER),
             out: Vec::new(),
             error: None,
         }
@@ -122,6 +125,7 @@ impl Tcb {
 
     fn segment(&self, seq: u32, flags: u8, data: Vec<u8>) -> Segment {
         let window = (BUFFER - self.recv_buf.len()).min(u16::MAX as usize) as u16;
+        self.advertised.set(window as usize);
         Segment { src_port: self.local_port, dst_port: self.remote_port, seq, ack: self.rcv_nxt, flags, window, mss: None, data }
     }
 
@@ -256,6 +260,13 @@ impl Tcb {
             self.ack_now = true;
             self.flush_ack();
             return;
+        }
+        // A zero-window probe the peer could not take: once the window
+        // opens, resend from the first unacknowledged byte.
+        let in_flight = self.snd_nxt.wrapping_sub(self.snd_una);
+        if self.snd_wnd == 0 && seg.window > 0 && in_flight > 0 && !self.fin_sent {
+            self.snd_nxt = self.snd_una;
+            self.rtx_deadline = None;
         }
         self.snd_wnd = seg.window as u32;
         if self.fin_acked {
@@ -413,12 +424,14 @@ impl Tcb {
 
     pub fn recv(&mut self, buf: &mut [u8]) -> usize {
         let n = buf.len().min(self.recv_buf.len());
-        let was_full = self.recv_buf.len() >= BUFFER - self.mss;
         for (d, s) in buf.iter_mut().zip(self.recv_buf.drain(..n)) {
             *d = s;
         }
-        // Tell the peer the window opened again.
-        if was_full && n > 0 {
+        // Tell the peer the window opened (by at least a segment, or to
+        // half the buffer), or it waits for its retransmission timer.
+        let window = (BUFFER - self.recv_buf.len()).min(u16::MAX as usize);
+        let adv = self.advertised.get();
+        if n > 0 && window > adv && (window - adv >= self.mss.min(BUFFER / 2) || adv < BUFFER / 4) {
             self.ack_now = true;
         }
         n

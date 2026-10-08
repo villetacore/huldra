@@ -202,6 +202,17 @@ pub trait Inode: Send + Sync + Any {
         PollState { readable: true, writable: true, hangup: false }
     }
 
+    /// Device memory a process may map (`mmap` on a frame buffer):
+    /// physical base and length.
+    fn mmap_phys(&self) -> Option<(u64, u64)> {
+        None
+    }
+
+    /// Cloning devices (`/dev/ptmx`) return a fresh node for every open.
+    fn open_instance(&self) -> Option<KResult<Arc<dyn Inode>>> {
+        None
+    }
+
     fn as_any(&self) -> &dyn Any;
 }
 

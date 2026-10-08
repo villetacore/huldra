@@ -394,3 +394,97 @@ pub fn umount(a: &mut Args) -> KResult<Ret> {
 fn is_dir(kind: FileType) -> bool {
     kind == FileType::Directory
 }
+
+fn poll_fds(fds_addr: u64, nfds: u64, timeout_ms: Option<u64>) -> KResult<Ret> {
+    if nfds > 1024 {
+        return Err(Errno::EINVAL);
+    }
+    let mut fds: Vec<PollFd> = (0..nfds).map(|i| uaccess::read_user::<PollFd>(fds_addr + i * 8)).collect::<KResult<_>>()?;
+    let deadline = timeout_ms.map(|ms| crate::time::ticks() + crate::time::ms_to_ticks(ms));
+    loop {
+        let mut ready = 0;
+        {
+            let me = sched::current();
+            let files = me.files.lock();
+            for p in fds.iter_mut() {
+                p.revents = 0;
+                if p.fd < 0 {
+                    continue;
+                }
+                match files.get(p.fd) {
+                    Err(_) => p.revents = POLLNVAL,
+                    Ok(f) => {
+                        let st = f.inode.poll();
+                        if st.readable && p.events & (POLLIN | POLLPRI) != 0 {
+                            p.revents |= POLLIN;
+                        }
+                        if st.writable && p.events & POLLOUT != 0 {
+                            p.revents |= POLLOUT;
+                        }
+                        if st.hangup {
+                            p.revents |= POLLHUP;
+                        }
+                    }
+                }
+                if p.revents != 0 {
+                    ready += 1;
+                }
+            }
+        }
+        let expired = deadline.is_some_and(|d| crate::time::ticks() >= d);
+        if ready > 0 || expired {
+            for (i, p) in fds.iter().enumerate() {
+                uaccess::write_user(fds_addr + i as u64 * 8, p)?;
+            }
+            return value(ready);
+        }
+        // Re-check on the next tick (or earlier wakeups of this task).
+        let next = crate::time::ticks() + 1;
+        sched::SLEEPERS.wait_until(|| (crate::time::ticks() >= next).then_some(()))?;
+    }
+}
+
+pub fn poll(a: &mut Args) -> KResult<Ret> {
+    let timeout = a.a2() as i32;
+    poll_fds(a.a0(), a.a1(), (timeout >= 0).then_some(timeout as u64))
+}
+
+pub fn ppoll(a: &mut Args) -> KResult<Ret> {
+    let timeout = if a.a2() == 0 {
+        None
+    } else {
+        let ts: huldra_abi::Timespec = uaccess::read_user(a.a2())?;
+        Some(ts.tv_sec as u64 * 1000 + ts.tv_nsec as u64 / 1_000_000)
+    };
+    poll_fds(a.a0(), a.a1(), timeout)
+}
+
+fn statfs_of(path: &str) -> KResult<Statfs> {
+    let (_, fs) = vfs::mount_of(path).ok_or(Errno::ENOENT)?;
+    let s = fs.statfs();
+    Ok(Statfs {
+        f_type: s.magic as i64,
+        f_bsize: s.block_size as i64,
+        f_blocks: s.blocks,
+        f_bfree: s.free_blocks,
+        f_bavail: s.free_blocks,
+        f_files: s.files,
+        f_ffree: s.free_files,
+        f_namelen: 255,
+        f_frsize: s.block_size as i64,
+        ..Statfs::default()
+    })
+}
+
+pub fn statfs(a: &mut Args) -> KResult<Ret> {
+    let path = path_at(AT_FDCWD, a.a0())?;
+    fs::stat(&path)?;
+    uaccess::write_user(a.a1(), &statfs_of(&path)?)?;
+    value(0)
+}
+
+pub fn fstatfs(a: &mut Args) -> KResult<Ret> {
+    let path = file(a.a0())?.path.clone();
+    uaccess::write_user(a.a1(), &statfs_of(&path)?)?;
+    value(0)
+}

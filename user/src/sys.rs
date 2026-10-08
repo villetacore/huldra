@@ -372,3 +372,14 @@ pub fn sync() {
 pub fn sched_yield() {
     unsafe { syscall3(nr::SCHED_YIELD, 0, 0, 0) };
 }
+
+pub fn poll(fds: &mut [huldra_abi::fs::PollFd], timeout_ms: i32) -> Result<usize> {
+    check(unsafe { syscall3(nr::POLL, fds.as_mut_ptr() as usize, fds.len(), timeout_ms as isize as usize) })
+}
+
+pub fn statfs(path: &str) -> Result<huldra_abi::fs::Statfs> {
+    let p = CString::new(path);
+    let mut st = huldra_abi::fs::Statfs::default();
+    check(unsafe { syscall3(nr::STATFS, p.as_ptr(), &mut st as *mut _ as usize, 0) })?;
+    Ok(st)
+}

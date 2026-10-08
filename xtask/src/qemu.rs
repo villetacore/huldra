@@ -133,6 +133,36 @@ struct Console {
     buffer: String,
 }
 
+/// Decodes `\r`, `\n`, `\t`, `\e` and `\xNN` in test scripts.
+fn unescape(s: &str) -> Vec<u8> {
+    let b = s.as_bytes();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'\\' && i + 1 < b.len() {
+            match b[i + 1] {
+                b'r' => out.push(b'\r'),
+                b'n' => out.push(b'\n'),
+                b't' => out.push(b'\t'),
+                b'e' => out.push(0x1b),
+                b'\\' => out.push(b'\\'),
+                b'x' if i + 4 <= b.len() => {
+                    let hex = std::str::from_utf8(&b[i + 2..i + 4]).unwrap_or("00");
+                    out.push(u8::from_str_radix(hex, 16).unwrap_or(0));
+                    i += 4;
+                    continue;
+                }
+                other => out.push(other),
+            }
+            i += 2;
+        } else {
+            out.push(b[i]);
+            i += 1;
+        }
+    }
+    out
+}
+
 fn strip_ansi(s: &str) -> String {
     let mut out = String::new();
     let mut chars = s.chars().peekable();
@@ -162,7 +192,7 @@ impl Console {
         loop {
             let clean = strip_ansi(&self.buffer);
             let last_line = clean.rsplit('\n').next().unwrap_or("");
-            if last_line.starts_with("root@") && last_line.ends_with("# ") {
+            if last_line.contains("root@") && last_line.ends_with("# ") {
                 self.buffer.clear();
                 return Ok(clean);
             }
@@ -182,6 +212,10 @@ impl Console {
                 Err(e) => return Err(e.to_string()),
             }
         }
+    }
+
+    fn send_raw(&mut self, bytes: &[u8]) -> Result {
+        self.stream.write_all(bytes).map_err(|e| e.to_string())
     }
 
     fn send_line(&mut self, line: &str) -> Result {
@@ -264,6 +298,15 @@ pub fn shell_session(a: &Artifacts, script: &Path) -> Result {
                         n + 1
                     ));
                 }
+            } else if let Some(keys) = line.strip_prefix("= ") {
+                // Raw keystrokes for full-screen programs (\r, \e, \xNN escapes).
+                command = keys.to_string();
+                println!("= {keys}");
+                console.send_raw(&unescape(keys))?;
+                std::thread::sleep(Duration::from_millis(300));
+            } else if line == "." {
+                // Wait for the shell prompt to come back.
+                output = console.read_until_prompt(Duration::from_secs(60))?;
             }
         }
         if failures.is_empty() {

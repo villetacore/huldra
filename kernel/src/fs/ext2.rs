@@ -215,6 +215,18 @@ impl FileSystem for Ext2Mount {
         self.0.inner.lock().flush().map_err(errno)?;
         self.0.disk.sync()
     }
+
+    fn statfs(&self) -> FsStats {
+        let s = self.0.inner.lock().statfs();
+        FsStats {
+            magic: 0xEF53,
+            block_size: s.block_size as u64,
+            blocks: s.blocks as u64,
+            free_blocks: s.free_blocks as u64,
+            files: s.inodes as u64,
+            free_files: s.free_inodes as u64,
+        }
+    }
 }
 
 pub fn mount(disk: Arc<Disk>) -> KResult<Arc<dyn FileSystem>> {

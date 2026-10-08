@@ -13,3 +13,4 @@ bench = false
 [dependencies]
 huldra-abi = { path = "../libs/abi" }
 huldra-kalloc = { path = "../libs/kalloc" }
+huldra-archive = { path = "../libs/archive" }

@@ -239,6 +239,19 @@ impl FileSystem for TmpFs {
         "tmpfs"
     }
 
+    fn statfs(&self) -> FsStats {
+        // tmpfs lives in RAM: report memory.
+        let (free, total) = crate::mm::frame::stats();
+        FsStats {
+            magic: 0x0102_1994,
+            block_size: 4096,
+            blocks: total as u64,
+            free_blocks: free as u64,
+            files: 0,
+            free_files: 0,
+        }
+    }
+
     fn root(&self) -> Arc<dyn Inode> {
         self.root.clone()
     }

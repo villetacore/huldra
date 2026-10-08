@@ -172,6 +172,26 @@ impl Inode for Tty {
         if buf.is_empty() {
             return Ok(0);
         }
+        let (canonical, vmin, vtime) = {
+            let s = self.state.lock();
+            (s.termios.c_lflag & ICANON != 0, s.termios.c_cc[VMIN], s.termios.c_cc[VTIME])
+        };
+        if !canonical && vmin == 0 {
+            // Polling read (VTIME = 0) or read with a timeout in 1/10 s.
+            let deadline = crate::time::ticks() + crate::time::ms_to_ticks(vtime as u64 * 100);
+            let take = || {
+                let mut s = self.state.lock();
+                if s.ready.is_empty() {
+                    return None;
+                }
+                let n = buf.len().min(s.ready.len());
+                for (dst, src) in buf.iter_mut().zip(s.ready.drain(..n)) {
+                    *dst = src;
+                }
+                Some(n)
+            };
+            return Ok(self.readers.wait_until_deadline(take, deadline)?.unwrap_or(0));
+        }
         self.readers.wait_until(|| {
             let mut s = self.state.lock();
             let canonical = s.termios.c_lflag & ICANON != 0;
@@ -267,6 +287,16 @@ impl Inode for Tty {
 
     fn bytes_available(&self) -> Option<usize> {
         Some(self.state.lock().ready.len())
+    }
+
+    fn poll(&self) -> PollState {
+        let s = self.state.lock();
+        let readable = if s.termios.c_lflag & ICANON != 0 {
+            s.ready.contains(&b'\n') || !s.eof_marks.is_empty() || s.ready.len() >= MAX_INPUT
+        } else {
+            !s.ready.is_empty()
+        };
+        PollState { readable, writable: true, hangup: false }
     }
 
     fn as_any(&self) -> &dyn Any {

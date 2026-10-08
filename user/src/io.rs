@@ -157,3 +157,37 @@ impl Reader {
         self.eof = false;
     }
 }
+
+/// Reads a whole file, or standard input for `-`.
+pub fn read_input(path: &str) -> Result<Vec<u8>> {
+    if path == "-" {
+        Reader::new(STDIN).read_to_end()
+    } else {
+        crate::fs::read(path)
+    }
+}
+
+/// Lines of the named inputs (standard input if none), with the program
+/// name used for error messages. Missing files are reported and skipped.
+pub fn input_lines(args: &[&str]) -> (Vec<String>, bool) {
+    let inputs: Vec<&str> = if args.is_empty() { alloc::vec!["-"] } else { args.to_vec() };
+    let mut lines = Vec::new();
+    let mut ok = true;
+    for p in inputs {
+        match read_input(p) {
+            Ok(data) => {
+                let text = String::from_utf8_lossy(&data);
+                let mut v: Vec<String> = text.split('\n').map(String::from).collect();
+                if text.ends_with('\n') {
+                    v.pop();
+                }
+                lines.extend(v);
+            }
+            Err(e) => {
+                crate::eprintln!("{}: {}: {}", crate::env::program_name(), p, e);
+                ok = false;
+            }
+        }
+    }
+    (lines, ok)
+}

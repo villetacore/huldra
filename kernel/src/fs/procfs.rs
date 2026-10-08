@@ -238,6 +238,10 @@ impl FileSystem for ProcFs {
         "proc"
     }
 
+    fn statfs(&self) -> FsStats {
+        FsStats { magic: 0x9FA0, block_size: 4096, ..FsStats::default() }
+    }
+
     fn root(&self) -> Arc<dyn Inode> {
         self.root.clone()
     }

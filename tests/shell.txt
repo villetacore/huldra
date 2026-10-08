@@ -60,5 +60,45 @@
 < /tmp
 > echo 'single $HOME' "double $HOME" $((6 * 7))
 < single $HOME double /root 42
+> printf "b\na\nc\na\n" | sort | uniq -c
+< 2 a
+> echo hello world | tr a-z A-Z
+< HELLO WORLD
+> echo a:b:c | cut -d : -f 2
+< b
+> echo foo bar | sed s/foo/baz/
+< baz bar
+> seq 3 | xargs echo
+< 1 2 3
+> expr 6 \* 7
+< 42
+> find /etc -name "host*"
+< /etc/hostname
+> echo hi | sha256sum
+< 98ea6e4f216f2fb4b69fff9b3a44842c38686ca685f3f55dc48c5d3fb1107be4  -
+> tar -cf /tmp/t.tar /etc && tar -tf /tmp/t.tar
+< etc/hostname
+> df -h
+< /mnt
+> echo aGVsbG8= | base64 -d
+< hello
+> diff /etc/hostname /etc/os-release
+< > NAME
+= edit /tmp/note.txt\r
+= hello from the editor\x13\x11
+.
+> cat /tmp/note.txt
+< hello from the editor
+= less /etc/os-release\r
+= q
+.
+= fm\r
+= \e[21~
+.
+= top\r
+= q
+.
+> echo still alive
+< still alive
 > utest
 < utest: 20 passed, 0 failed

@@ -7,6 +7,10 @@ name = "huldra-abi"
 version = "0.2.0"
 
 [[package]]
+name = "huldra-archive"
+version = "0.2.0"
+
+[[package]]
 name = "huldra-buddy"
 version = "0.2.0"
 
@@ -43,6 +47,7 @@ name = "huldra-user"
 version = "0.2.0"
 dependencies = [
  "huldra-abi",
+ "huldra-archive",
  "huldra-kalloc",
 ]
 

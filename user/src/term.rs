@@ -27,26 +27,49 @@ pub fn size() -> (usize, usize) {
 /// Puts the terminal in raw mode; the old settings come back on drop.
 pub struct RawMode {
     saved: Termios,
+    fd: i32,
 }
 
 impl RawMode {
     pub fn enable() -> Result<RawMode> {
+        Self::enable_fd(STDIN)
+    }
+
+    pub fn enable_fd(fd: i32) -> Result<RawMode> {
         let mut t = Termios::default();
-        sys::ioctl(STDIN, TCGETS, &mut t as *mut Termios as usize)?;
+        sys::ioctl(fd, TCGETS, &mut t as *mut Termios as usize)?;
         let saved = t;
         t.c_iflag &= !ICRNL;
         t.c_lflag &= !(ICANON | ECHO | ISIG | IEXTEN);
         t.c_cc[VMIN] = 1;
         t.c_cc[VTIME] = 0;
-        sys::ioctl(STDIN, TCSETS, &t as *const Termios as usize)?;
-        Ok(RawMode { saved })
+        sys::ioctl(fd, TCSETS, &t as *const Termios as usize)?;
+        Ok(RawMode { saved, fd })
+    }
+}
+
+impl RawMode {
+    /// Temporarily restores the original settings (to run another program).
+    pub fn suspend(&self) {
+        crate::io::flush_stdout();
+        let _ = sys::ioctl(self.fd, TCSETS, &self.saved as *const Termios as usize);
+    }
+
+    /// Re-enters raw mode after [`suspend`](Self::suspend).
+    pub fn resume(&self) {
+        let mut t = self.saved;
+        t.c_iflag &= !ICRNL;
+        t.c_lflag &= !(ICANON | ECHO | ISIG | IEXTEN);
+        t.c_cc[VMIN] = 1;
+        t.c_cc[VTIME] = 0;
+        let _ = sys::ioctl(self.fd, TCSETS, &t as *const Termios as usize);
     }
 }
 
 impl Drop for RawMode {
     fn drop(&mut self) {
         crate::io::flush_stdout();
-        let _ = sys::ioctl(STDIN, TCSETS, &self.saved as *const Termios as usize);
+        let _ = sys::ioctl(self.fd, TCSETS, &self.saved as *const Termios as usize);
     }
 }
 
@@ -77,6 +100,7 @@ pub enum Key {
 /// Reads keys from stdin, decoding escape sequences and UTF-8.
 pub struct Keys {
     buf: Vec<u8>,
+    fd: i32,
 }
 
 impl Default for Keys {
@@ -87,13 +111,29 @@ impl Default for Keys {
 
 impl Keys {
     pub fn new() -> Keys {
-        Keys { buf: Vec::new() }
+        Keys { buf: Vec::new(), fd: STDIN }
+    }
+
+    /// Reads keys from `fd` (e.g. /dev/tty when stdin is a pipe).
+    pub fn from_fd(fd: i32) -> Keys {
+        Keys { buf: Vec::new(), fd }
+    }
+
+    /// Waits up to `ms` milliseconds for a key.
+    pub fn read_timeout(&mut self, ms: i32) -> Result<Option<Key>> {
+        if self.buf.is_empty() {
+            let mut p = [huldra_abi::fs::PollFd { fd: self.fd, events: huldra_abi::fs::POLLIN, revents: 0 }];
+            if sys::poll(&mut p, ms)? == 0 {
+                return Ok(None);
+            }
+        }
+        self.read().map(Some)
     }
 
     fn fill(&mut self) -> Result<()> {
         let mut chunk = [0u8; 64];
         loop {
-            match sys::read(STDIN, &mut chunk) {
+            match sys::read(self.fd, &mut chunk) {
                 Ok(0) => return Err(Errno::EIO),
                 Ok(n) => {
                     self.buf.extend_from_slice(&chunk[..n]);

@@ -59,6 +59,9 @@ impl OpenFile {
         if !self.readable() {
             return Err(Errno::EBADF);
         }
+        if self.flags() & O_NONBLOCK != 0 && !buf.is_empty() && !self.inode.poll().readable {
+            return Err(Errno::EAGAIN);
+        }
         let off = *self.offset.lock();
         let n = self.inode.read_at(off, buf)?;
         if self.is_seekable() {

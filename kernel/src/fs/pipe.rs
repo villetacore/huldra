@@ -134,6 +134,15 @@ impl Inode for Pipe {
         Some(self.state.lock().data.len())
     }
 
+    fn poll(&self) -> PollState {
+        let s = self.state.lock();
+        PollState {
+            readable: !s.data.is_empty() || s.writers == 0,
+            writable: s.data.len() < CAPACITY || s.readers == 0,
+            hangup: s.writers == 0,
+        }
+    }
+
     fn as_any(&self) -> &dyn Any {
         self
     }

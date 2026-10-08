@@ -194,7 +194,30 @@ pub trait Inode: Send + Sync + Any {
         None
     }
 
+    /// Readiness for `poll`: what can be done without blocking.
+    fn poll(&self) -> PollState {
+        PollState { readable: true, writable: true, hangup: false }
+    }
+
     fn as_any(&self) -> &dyn Any;
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PollState {
+    pub readable: bool,
+    pub writable: bool,
+    pub hangup: bool,
+}
+
+/// File system usage (`statfs`).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct FsStats {
+    pub magic: u64,
+    pub block_size: u64,
+    pub blocks: u64,
+    pub free_blocks: u64,
+    pub files: u64,
+    pub free_files: u64,
 }
 
 pub trait FileSystem: Send + Sync {
@@ -203,6 +226,22 @@ pub trait FileSystem: Send + Sync {
     fn sync(&self) -> KResult<()> {
         Ok(())
     }
+    fn statfs(&self) -> FsStats {
+        FsStats { block_size: 4096, ..FsStats::default() }
+    }
+}
+
+/// The file system holding the normalized absolute `path`, and its mount point.
+pub fn mount_of(path: &str) -> Option<(String, Arc<dyn FileSystem>)> {
+    let mounts = mount_table();
+    let mut best: Option<(String, Arc<dyn FileSystem>)> = None;
+    for (point, m) in mounts {
+        let inside = point == "/" || path == point || path.starts_with(&alloc::format!("{}/", point));
+        if inside && best.as_ref().is_none_or(|(b, _)| point.len() > b.len()) {
+            best = Some((point, m.fs));
+        }
+    }
+    best
 }
 
 static NEXT_DEV: AtomicU64 = AtomicU64::new(1);

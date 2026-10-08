@@ -1,0 +1,6 @@
+[package]
+name = "huldra-archive"
+description = "ustar archives and SHA-256 (packages, tar, sha256sum)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true

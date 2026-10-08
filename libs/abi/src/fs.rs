@@ -134,3 +134,42 @@ pub fn decode_dirents(buf: &[u8]) -> impl Iterator<Item = Dirent<'_>> {
 
 /// Mount flags.
 pub const MS_RDONLY: u64 = 1;
+
+pub const POLLIN: i16 = 0x001;
+pub const POLLPRI: i16 = 0x002;
+pub const POLLOUT: i16 = 0x004;
+pub const POLLERR: i16 = 0x008;
+pub const POLLHUP: i16 = 0x010;
+pub const POLLNVAL: i16 = 0x020;
+
+/// `struct pollfd`
+#[derive(Debug, Clone, Copy, Default)]
+#[repr(C)]
+pub struct PollFd {
+    pub fd: i32,
+    pub events: i16,
+    pub revents: i16,
+}
+
+/// `struct statfs` (x86_64).
+#[derive(Debug, Clone, Copy, Default)]
+#[repr(C)]
+pub struct Statfs {
+    pub f_type: i64,
+    pub f_bsize: i64,
+    pub f_blocks: u64,
+    pub f_bfree: u64,
+    pub f_bavail: u64,
+    pub f_files: u64,
+    pub f_ffree: u64,
+    pub f_fsid: [i32; 2],
+    pub f_namelen: i64,
+    pub f_frsize: i64,
+    pub f_flags: i64,
+    pub f_spare: [i64; 4],
+}
+
+pub const EXT2_SUPER_MAGIC: i64 = 0xEF53;
+pub const TMPFS_MAGIC: i64 = 0x0102_1994;
+pub const PROC_SUPER_MAGIC: i64 = 0x9FA0;
+pub const DEVFS_MAGIC: i64 = 0x1373;

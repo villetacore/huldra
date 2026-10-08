@@ -1,5 +1,6 @@
 //! x86_64 architecture support.
 
+pub mod acpi;
 pub mod apic;
 pub mod context;
 pub mod cpu;
@@ -31,6 +32,17 @@ pub fn init() {
     pic::init();
     pit::init();
     irq::register(0, "timer", timer_interrupt);
+}
+
+/// Switches to the local/I/O APIC when the firmware provides them
+/// (needs the kernel page tables for MMIO access).
+pub fn init_apic() {
+    let irq = irq_save();
+    if apic::init() {
+        irq::switch_to_apic();
+        apic::start_timer();
+    }
+    irq_restore(irq);
 }
 
 fn timer_interrupt() {

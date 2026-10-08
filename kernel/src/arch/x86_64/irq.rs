@@ -36,6 +36,8 @@ pub fn register(irq: u8, name: &'static str, handler: fn()) {
 pub fn switch_to_apic() {
     super::pic::disable();
     USE_APIC.store(true, Ordering::Release);
+    // The local APIC timer replaces the PIT on line 0.
+    LINES.lock()[0] = Line { handler: None, name: "" };
     let lines = *LINES.lock();
     for (irq, line) in lines.iter().enumerate() {
         if line.handler.is_some() {

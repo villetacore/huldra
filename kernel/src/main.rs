@@ -45,6 +45,7 @@ pub extern "C" fn kernel_main(magic: u32, info: u32) -> ! {
     mm::frame::init(boot);
     mm::vmm::init(boot);
     mm::frame::add_high_memory(boot);
+    arch::init_apic();
     let (free, _) = mm::frame::stats();
     let k = mm::kernel_layout();
     kinfo!(

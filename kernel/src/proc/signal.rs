@@ -212,6 +212,7 @@ pub fn sigprocmask(how: u32, set: Option<u64>) -> KResult<u64> {
 #[derive(Clone, Copy)]
 struct SignalFrame {
     regs: TrapFrame,
+    fpu: crate::arch::fpu::FpuState,
     blocked: u64,
     magic: u64,
 }
@@ -263,14 +264,9 @@ fn setup_frame(me: &Arc<Task>, frame: &mut TrapFrame, sig: u32, action: &SigActi
     // Skip the red zone, then align so the handler starts like after a call.
     let frame_addr = (frame.rsp - 128 - size_of::<SignalFrame>() as u64) & !15;
     let ret_addr = frame_addr - 8;
-    write_user(
-        frame_addr,
-        &SignalFrame {
-            regs: *frame,
-            blocked,
-            magic: FRAME_MAGIC,
-        },
-    )?;
+    let mut fpu = crate::arch::fpu::FpuState::initial();
+    fpu.save();
+    write_user(frame_addr, &SignalFrame { regs: *frame, fpu, blocked, magic: FRAME_MAGIC })?;
     write_user(ret_addr, &action.restorer)?;
 
     {
@@ -300,6 +296,7 @@ pub fn sigreturn(frame: &mut TrapFrame) -> KResult<()> {
         return Err(Errno::EFAULT);
     }
     let (cs, ss) = (frame.cs, frame.ss);
+    saved.fpu.restore();
     *frame = saved.regs;
     // Never let user space change privilege-related state.
     frame.cs = cs;

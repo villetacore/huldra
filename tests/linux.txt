@@ -1,0 +1,11 @@
+# Real Linux programs (gcc -static, glibc), run when a Linux gcc is available.
+> /mnt/linux/hello a b
+< hello from glibc! argc=3 argv[0]=/mnt/linux/hello
+< sqrt(2) = 1.414214, pi = 3.14159
+< malloc ok: x, HOME=/root
+> /mnt/linux/posix
+< posix: 0 failed
+> /mnt/linux/threads
+< counter=80000 (expected 80000)
+> dmesg | grep unimplemented
+! unimplemented

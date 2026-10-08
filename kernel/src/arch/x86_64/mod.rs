@@ -4,6 +4,7 @@ pub mod acpi;
 pub mod apic;
 pub mod context;
 pub mod cpu;
+pub mod fpu;
 pub mod gdt;
 pub mod idt;
 pub mod irq;
@@ -28,6 +29,7 @@ pub fn init() {
     gdt::init();
     percpu::init(); // after gdt::init, which reloads GS
     syscall::init();
+    fpu::init();
     idt::init();
     pic::init();
     pit::init();

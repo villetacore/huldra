@@ -132,14 +132,25 @@ fn exec_depth(
     unsafe { mm.activate() };
     me.cr3.store(mm.root(), Ordering::Release);
     me.set_user();
-    let old = me.mm.lock().replace(mm);
+    super::lifecycle::kill_other_threads(&me);
+    let old = me.mm.reset(Some(mm));
     drop(old);
+    me.tgid.store(me.pid, Ordering::Release);
+    super::lifecycle::release_vfork(&me);
     me.fs_base.store(0, Ordering::Relaxed);
     unsafe { wrmsr(MSR_FS_BASE, 0) };
     me.files.lock().close_on_exec();
+    unsafe {
+        *me.fpu() = crate::arch::fpu::FpuState::initial();
+        me.fpu().restore();
+    }
     me.signals.lock().exec();
     *me.name.lock() = String::from(path.rsplit('/').next().unwrap_or(path));
-    me.proc.lock().cmdline = argv;
+    {
+        let mut p = me.proc.lock();
+        p.cmdline = argv;
+        p.exe = String::from(path);
+    }
     Ok(user_entry_frame(entry, sp))
 }
 

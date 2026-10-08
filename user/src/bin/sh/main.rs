@@ -163,10 +163,13 @@ fn main() -> i32 {
     let login = name.starts_with('-');
 
     if args.len() >= 3 && args[1] == "-c" {
-        let mut params: Vec<String> = alloc::vec![args.get(3).cloned().unwrap_or_else(|| name.clone())];
-        params.extend(args.iter().skip(4).cloned());
+        // `sh -c [--] command [name [args...]]`
+        let start = if args[2] == "--" { 3 } else { 2 };
+        let Some(command) = args.get(start) else { return 0 };
+        let mut params: Vec<String> = alloc::vec![args.get(start + 1).cloned().unwrap_or_else(|| name.clone())];
+        params.extend(args.iter().skip(start + 2).cloned());
         let mut sh = Shell::new(params);
-        return sh.run_source(&args[2]);
+        return sh.run_source(command);
     }
 
     if args.len() >= 2 && !args[1].starts_with('-') {

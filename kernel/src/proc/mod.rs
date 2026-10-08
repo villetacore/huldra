@@ -1,7 +1,9 @@
 //! Processes: user address spaces, executable loading, process lifecycle
 //! (fork/exec/exit/wait), signals and safe access to user memory.
 
+pub mod alarm;
 pub mod exec;
+pub mod futex;
 pub mod lifecycle;
 pub mod mm;
 pub mod signal;
@@ -26,6 +28,8 @@ pub struct ProcState {
     pub umask: u32,
     pub cmdline: Vec<String>,
     pub children: Vec<Pid>,
+    /// Path of the running executable (/proc/self/exe).
+    pub exe: String,
 }
 
 impl ProcState {
@@ -38,6 +42,7 @@ impl ProcState {
             umask: 0o022,
             cmdline: Vec::new(),
             children: Vec::new(),
+            exe: String::new(),
         }
     }
 }

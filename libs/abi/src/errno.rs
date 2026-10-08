@@ -40,6 +40,7 @@ pub enum Errno {
     ENOSYS = 38,
     ENOTEMPTY = 39,
     ELOOP = 40,
+    ETIMEDOUT = 110,
 }
 
 impl Errno {
@@ -49,7 +50,7 @@ impl Errno {
 
     pub fn from_code(code: i32) -> Option<Errno> {
         use Errno::*;
-        const ALL: [Errno; 35] = [
+        const ALL: [Errno; 36] = [
             EPERM,
             ENOENT,
             ESRCH,
@@ -85,6 +86,7 @@ impl Errno {
             ENOSYS,
             ENOTEMPTY,
             ELOOP,
+            ETIMEDOUT,
         ];
         ALL.iter().copied().find(|e| e.code() == code)
     }
@@ -127,6 +129,7 @@ impl Errno {
             ENOSYS => "Function not implemented",
             ENOTEMPTY => "Directory not empty",
             ELOOP => "Too many levels of symbolic links",
+            ETIMEDOUT => "Connection timed out",
         }
     }
 }

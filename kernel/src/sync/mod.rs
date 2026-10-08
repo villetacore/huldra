@@ -72,6 +72,80 @@ impl<T> Drop for SpinLockGuard<'_, T> {
     }
 }
 
+/// Guard for a lock owned through an `Arc` (keeps the lock alive).
+pub struct ArcSpinGuard<T> {
+    lock: alloc::sync::Arc<SpinLock<T>>,
+    irq: bool,
+}
+
+impl<T> SpinLock<T> {
+    pub fn lock_arc(this: &alloc::sync::Arc<SpinLock<T>>) -> ArcSpinGuard<T> {
+        let irq = arch::irq_save();
+        while this.locked.compare_exchange_weak(false, true, Ordering::Acquire, Ordering::Relaxed).is_err() {
+            core::hint::spin_loop();
+        }
+        ArcSpinGuard { lock: this.clone(), irq }
+    }
+}
+
+impl<T> Deref for ArcSpinGuard<T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        unsafe { &*self.lock.data.get() }
+    }
+}
+
+impl<T> DerefMut for ArcSpinGuard<T> {
+    fn deref_mut(&mut self) -> &mut T {
+        unsafe { &mut *self.lock.data.get() }
+    }
+}
+
+impl<T> Drop for ArcSpinGuard<T> {
+    fn drop(&mut self) {
+        self.lock.locked.store(false, Ordering::Release);
+        arch::irq_restore(self.irq);
+    }
+}
+
+/// State that several tasks may share (address space and file table of a
+/// thread group). `lock` locks the current shared object; `share`/`set`
+/// change which object this task refers to.
+pub struct Shared<T> {
+    slot: SpinLock<alloc::sync::Arc<SpinLock<T>>>,
+}
+
+impl<T> Shared<T> {
+    pub fn new(value: T) -> Self {
+        Shared { slot: SpinLock::new(alloc::sync::Arc::new(SpinLock::new(value))) }
+    }
+
+    /// The shared object (for handing it to another task).
+    pub fn share(&self) -> alloc::sync::Arc<SpinLock<T>> {
+        self.slot.lock().clone()
+    }
+
+    /// Points this task at `object`; returns the previous one.
+    pub fn set(&self, object: alloc::sync::Arc<SpinLock<T>>) -> alloc::sync::Arc<SpinLock<T>> {
+        core::mem::replace(&mut *self.slot.lock(), object)
+    }
+
+    /// Replaces the object with a new, unshared one holding `value`.
+    pub fn reset(&self, value: T) -> alloc::sync::Arc<SpinLock<T>> {
+        self.set(alloc::sync::Arc::new(SpinLock::new(value)))
+    }
+
+    pub fn lock(&self) -> ArcSpinGuard<T> {
+        let arc = self.share();
+        SpinLock::lock_arc(&arc)
+    }
+
+    /// Identity of the shared object (e.g. for futex keys).
+    pub fn id(&self) -> usize {
+        alloc::sync::Arc::as_ptr(&*self.slot.lock()) as usize
+    }
+}
+
 /// A value initialized exactly once, then shared read-only.
 pub struct Once<T> {
     state: AtomicU8,

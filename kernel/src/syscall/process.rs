@@ -20,10 +20,6 @@ pub fn execve(a: &mut Args) -> KResult<Ret> {
     Ok(Ret::FrameReplaced)
 }
 
-pub fn exit(a: &mut Args) -> KResult<Ret> {
-    lifecycle::exit_process(huldra_abi::process::exit_status(a.a0() as i32))
-}
-
 pub fn wait4(a: &mut Args) -> KResult<Ret> {
     let (pid, status) = lifecycle::wait(a.a0() as i32 as i64, a.a2() as u32)?;
     if a.a1() != 0 && pid != 0 {

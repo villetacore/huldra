@@ -189,12 +189,20 @@ impl Console {
     fn read_until_prompt(&mut self, timeout: Duration) -> Result<String> {
         let start = Instant::now();
         let mut buf = [0u8; 4096];
+        // A prompt only counts once the output has been quiet for a moment:
+        // the line editor also reprints the prompt while redrawing.
+        let mut seen_prompt_at: Option<Instant> = None;
         loop {
             let clean = strip_ansi(&self.buffer);
             let last_line = clean.rsplit('\n').next().unwrap_or("");
             if last_line.contains("root@") && last_line.ends_with("# ") {
-                self.buffer.clear();
-                return Ok(clean);
+                let since = *seen_prompt_at.get_or_insert_with(Instant::now);
+                if since.elapsed() >= Duration::from_millis(300) {
+                    self.buffer.clear();
+                    return Ok(clean);
+                }
+            } else {
+                seen_prompt_at = None;
             }
             if start.elapsed() > timeout {
                 return Err(format!(
@@ -203,7 +211,10 @@ impl Console {
             }
             match self.stream.read(&mut buf) {
                 Ok(0) => return Err(format!("QEMU closed the serial port; output:\n{clean}")),
-                Ok(n) => self.buffer.push_str(&String::from_utf8_lossy(&buf[..n])),
+                Ok(n) => {
+                    self.buffer.push_str(&String::from_utf8_lossy(&buf[..n]));
+                    seen_prompt_at = None;
+                }
                 Err(e)
                     if matches!(
                         e.kind(),

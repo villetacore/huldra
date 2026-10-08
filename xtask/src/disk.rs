@@ -35,6 +35,10 @@ fn now() -> u32 {
         .map_or(0, |d| d.as_secs() as u32)
 }
 
+fn is_elf(data: &[u8]) -> bool {
+    data.starts_with(b"\x7fELF")
+}
+
 fn copy_tree(fs: &mut Ext2<FileDisk>, dir_ino: u32, src: &Path) -> Result {
     let mut entries: Vec<_> = fs::read_dir(src)
         .map_err(|e| e.to_string())?
@@ -50,7 +54,7 @@ fn copy_tree(fs: &mut Ext2<FileDisk>, dir_ino: u32, src: &Path) -> Result {
             copy_tree(fs, ino, &path)?;
         } else {
             let data = fs::read(&path).map_err(|x| x.to_string())?;
-            let mode = if name.ends_with(".sh") { 0o755 } else { 0o644 };
+            let mode = if name.ends_with(".sh") || is_elf(&data) { 0o755 } else { 0o644 };
             let ino = fs.create(dir_ino, &name, S_IFREG | mode).map_err(err)?;
             fs.write(ino, 0, &data).map_err(err)?;
         }
@@ -59,7 +63,8 @@ fn copy_tree(fs: &mut Ext2<FileDisk>, dir_ino: u32, src: &Path) -> Result {
 }
 
 /// Formats `image` and fills it with the contents of `source`.
-pub fn create_image(image: &Path, source: &Path) -> Result {
+/// Formats `image` and copies each (directory in the image, source dir) into it.
+pub fn create_image(image: &Path, sources: &[(&str, &Path)]) -> Result {
     let file = OpenOptions::new()
         .read(true)
         .write(true)
@@ -71,8 +76,16 @@ pub fn create_image(image: &Path, source: &Path) -> Result {
     let disk = FileDisk(RefCell::new(file));
     huldra_ext2::format(&disk, DISK_SIZE, "huldra", now()).map_err(|e| format!("mkfs: {e:?}"))?;
     let mut fs = Ext2::open(disk, now).map_err(|e| format!("mount: {e:?}"))?;
-    if source.is_dir() {
-        copy_tree(&mut fs, ROOT_INO, source)?;
+    for (dir, source) in sources {
+        if !source.is_dir() {
+            continue;
+        }
+        let ino = if dir.is_empty() {
+            ROOT_INO
+        } else {
+            fs.create(ROOT_INO, dir, S_IFDIR | 0o755).map_err(|e| format!("{dir}: {e:?}"))?
+        };
+        copy_tree(&mut fs, ino, source)?;
     }
     fs.flush().map_err(|e| format!("flush: {e:?}"))?;
     Ok(())

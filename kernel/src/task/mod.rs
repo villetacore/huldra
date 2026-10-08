@@ -10,7 +10,7 @@ use crate::mm::kstack::KernelStack;
 use crate::proc::mm::MemorySpace;
 use crate::proc::signal::SignalState;
 use crate::proc::ProcState;
-use crate::sync::SpinLock;
+use crate::sync::{Shared, SpinLock};
 use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
 use alloc::string::String;
@@ -23,6 +23,9 @@ use wait::WaitQueue;
 pub use sched::{current, schedule, yield_now};
 
 pub type Pid = u32;
+
+/// `group_exit` value meaning "no exit_group pending".
+pub const NO_GROUP_EXIT: i32 = i32::MIN;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[repr(u8)]
@@ -66,6 +69,8 @@ pub struct Task {
     detached: AtomicBool,
     /// Ticks spent running (for /proc and `ps`).
     pub cpu_ticks: AtomicU64,
+    /// FPU/SSE registers while the task is switched out.
+    fpu: UnsafeCell<crate::arch::fpu::FpuState>,
 
     // Process state (unused by kernel threads).
     /// Page table root to load when running; 0 = kernel page table.
@@ -73,8 +78,19 @@ pub struct Task {
     user: AtomicBool,
     /// User FS base (thread pointer), restored on every switch.
     pub fs_base: AtomicU64,
-    pub mm: SpinLock<Option<MemorySpace>>,
-    pub files: SpinLock<FdTable>,
+    /// Address space; shared by the threads of a process.
+    pub mm: Shared<Option<MemorySpace>>,
+    /// File descriptor table; shared with CLONE_FILES.
+    pub files: Shared<FdTable>,
+    /// Thread group id: the pid of the process this thread belongs to.
+    pub tgid: AtomicU32,
+    /// CLONE_CHILD_CLEARTID / set_tid_address: zeroed and futex-woken on exit.
+    pub clear_tid: AtomicU64,
+    /// Set when a vfork child execs or exits (the parent waits for it).
+    pub vfork_done: AtomicBool,
+    pub vfork_wait: WaitQueue,
+    /// Exit status requested by exit_group from another thread.
+    pub group_exit: AtomicI32,
     pub proc: SpinLock<ProcState>,
     pub signals: SpinLock<SignalState>,
     /// Woken when a child of this process exits.
@@ -107,6 +123,23 @@ impl Task {
     }
 
     /// True for user processes (also after they exited).
+    /// Saved FPU state (valid while the task is not running).
+    ///
+    /// # Safety
+    /// Only the scheduler and the task itself may touch it.
+    pub unsafe fn fpu(&self) -> &mut crate::arch::fpu::FpuState {
+        &mut *self.fpu.get()
+    }
+
+    pub fn tgid(&self) -> Pid {
+        self.tgid.load(Ordering::Acquire)
+    }
+
+    /// True for a non-leader thread of a process.
+    pub fn is_thread(&self) -> bool {
+        self.tgid() != self.pid
+    }
+
     pub fn is_user(&self) -> bool {
         self.user.load(Ordering::Acquire)
     }
@@ -142,11 +175,17 @@ fn new_task(pid: Pid, name: &str, kstack: Option<KernelStack>, context: Context)
         exited: WaitQueue::new(),
         detached: AtomicBool::new(false),
         cpu_ticks: AtomicU64::new(0),
+        fpu: UnsafeCell::new(crate::arch::fpu::FpuState::initial()),
         cr3: AtomicU64::new(0),
         user: AtomicBool::new(false),
         fs_base: AtomicU64::new(0),
-        mm: SpinLock::new(None),
-        files: SpinLock::new(FdTable::new()),
+        mm: Shared::new(None),
+        files: Shared::new(FdTable::new()),
+        tgid: AtomicU32::new(pid),
+        clear_tid: AtomicU64::new(0),
+        vfork_done: AtomicBool::new(false),
+        vfork_wait: WaitQueue::new(),
+        group_exit: AtomicI32::new(NO_GROUP_EXIT),
         proc: SpinLock::new(ProcState::kernel()),
         signals: SpinLock::new(SignalState::new()),
         child_exit: WaitQueue::new(),

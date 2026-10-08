@@ -5,6 +5,7 @@
 //! or a negated errno goes back in RAX.
 
 mod fs;
+mod linux;
 mod memory;
 mod misc;
 mod process;
@@ -90,10 +91,13 @@ fn call(n: usize, a: &mut Args) -> KResult<Ret> {
         nr::DUP2 => fs::dup2(a),
         nr::DUP3 => fs::dup3(a),
         nr::NANOSLEEP => misc::nanosleep(a),
-        nr::GETPID => value(sched::current().pid as u64),
-        nr::FORK | nr::VFORK => process::fork(a),
+        nr::GETPID => value(sched::current().tgid() as u64),
+        nr::FORK => process::fork(a),
+        nr::VFORK => linux::vfork(a),
+        nr::CLONE => linux::clone(a),
         nr::EXECVE => process::execve(a),
-        nr::EXIT | nr::EXIT_GROUP => process::exit(a),
+        nr::EXIT => linux::exit(a),
+        nr::EXIT_GROUP => linux::exit_group(a),
         nr::WAIT4 => process::wait4(a),
         nr::KILL => signal::kill(a),
         nr::UNAME => misc::uname(a),
@@ -129,13 +133,69 @@ fn call(n: usize, a: &mut Args) -> KResult<Ret> {
         nr::UMOUNT2 => fs::umount(a),
         nr::REBOOT => misc::reboot(a),
         nr::GETTID => value(sched::current().pid as u64),
-        nr::SET_TID_ADDRESS => value(sched::current().pid as u64),
+        nr::SET_TID_ADDRESS => linux::set_tid_address(a),
+        nr::FUTEX => linux::futex(a),
+        nr::TGKILL => linux::tgkill(a),
+        nr::TKILL => linux::tkill(a),
+        nr::CLOCK_NANOSLEEP => linux::clock_nanosleep(a),
+        nr::CLOCK_GETRES => linux::clock_getres(a),
+        nr::TIME => linux::time(a),
+        nr::GETTIMEOFDAY => linux::gettimeofday(a),
+        nr::GETRANDOM => linux::getrandom(a),
+        nr::PRLIMIT64 => linux::prlimit64(a),
+        nr::GETRLIMIT => linux::getrlimit(a),
+        nr::SYSINFO => linux::sysinfo(a),
+        nr::SCHED_GETAFFINITY => linux::sched_getaffinity(a),
+        nr::READLINK => linux::readlink(a),
+        nr::READLINKAT => linux::readlinkat(a),
+        nr::FACCESSAT | nr::FACCESSAT2 => linux::faccessat(a),
+        nr::FCHDIR => linux::fchdir(a),
+        nr::PAUSE => linux::pause(a),
+        nr::ALARM => linux::alarm(a),
+        nr::FSYNC | nr::FDATASYNC => linux::fsync(a),
+        nr::SET_ROBUST_LIST
+        | nr::SIGALTSTACK
+        | nr::MADVISE
+        | nr::SCHED_SETAFFINITY
+        | nr::SETRLIMIT
+        | nr::PRCTL
+        | nr::MEMBARRIER
+        | nr::CHMOD
+        | nr::FCHMOD
+        | nr::FCHMODAT
+        | nr::CHOWN
+        | nr::FCHOWN
+        | nr::LCHOWN
+        | nr::UTIMENSAT => linux::ignore(a),
+        nr::GETGROUPS => value(0),
+        nr::GETCPU => {
+            if a.a0() != 0 {
+                crate::proc::uaccess::write_user(a.a0(), &0u32)?;
+            }
+            value(0)
+        }
+        // Newer interfaces whose absence callers handle (they fall back).
+        nr::CLONE3 | nr::RSEQ | nr::MREMAP => Err(Errno::ENOSYS),
+        nr::LINK | nr::SYMLINK => Err(Errno::EPERM),
         nr::CLOCK_GETTIME => misc::clock_gettime(a),
         nr::OPENAT => fs::openat(a),
         nr::MKDIRAT => fs::mkdirat(a),
         nr::NEWFSTATAT => fs::newfstatat(a),
         nr::UNLINKAT => fs::unlinkat(a),
-        _ => Err(Errno::ENOSYS),
+        _ => {
+            report_unimplemented(n);
+            Err(Errno::ENOSYS)
+        }
+    }
+}
+
+/// Logs the first use of each unimplemented system call (helps porting).
+fn report_unimplemented(n: usize) {
+    use core::sync::atomic::{AtomicU64, Ordering};
+    static SEEN: [AtomicU64; 8] = [const { AtomicU64::new(0) }; 8];
+    if n < 512 && SEEN[n / 64].fetch_or(1 << (n % 64), Ordering::Relaxed) & (1 << (n % 64)) == 0 {
+        let me = sched::current();
+        kwarn!("{}[{}]: unimplemented system call {}", me.name(), me.pid, n);
     }
 }
 

@@ -76,7 +76,7 @@ fn main() -> ExitCode {
         "iso" => iso(&options),
         "fsck" => {
             let img = target_dir().join("fsck-check.img");
-            disk::create_image(&img, &root().join("diskfs"))
+            disk::create_image(&img, &disk_sources().iter().map(|(d, p)| (*d, p.as_path())).collect::<Vec<_>>())
                 .and_then(|_| disk::fsck(&img))
                 .and_then(|ran| {
                     if ran {
@@ -200,6 +200,56 @@ fn build_user() -> Result<Vec<image::ImageFile>> {
     Ok(files)
 }
 
+/// Directories copied onto the disk image: `diskfs/` and, when a Linux
+/// C compiler is available, Linux test programs in `/linux`.
+fn disk_sources() -> Vec<(&'static str, PathBuf)> {
+    let mut v = vec![("", root().join("diskfs"))];
+    if let Some(dir) = build_linux_programs() {
+        v.push(("linux", dir));
+    }
+    v
+}
+
+/// Compiles `tests/linux/*.c` with gcc -static (natively or in WSL).
+fn build_linux_programs() -> Option<PathBuf> {
+    let out = target_dir().join("linux-bin");
+    fs::create_dir_all(&out).ok()?;
+    let sources: Vec<PathBuf> = fs::read_dir(root().join("tests").join("linux"))
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|e| e == "c"))
+        .collect();
+    let to_wsl = |p: &Path| -> String {
+        let s = p.display().to_string().replace('\\', "/");
+        let (drive, rest) = s.split_at(1);
+        format!("/mnt/{}{}", drive.to_lowercase(), &rest[1..])
+    };
+    for src in sources {
+        let name = src.file_stem()?.to_string_lossy().into_owned();
+        let bin = out.join(&name);
+        let fresh = bin.metadata().and_then(|m| m.modified()).ok() >= src.metadata().and_then(|m| m.modified()).ok();
+        if bin.exists() && fresh {
+            continue;
+        }
+        let status = if cfg!(windows) {
+            Command::new("wsl")
+                .args(["-e", "gcc", "-static", "-O2", "-o", &to_wsl(&bin), &to_wsl(&src), "-lm"])
+                .status()
+        } else {
+            Command::new("gcc").args(["-static", "-O2", "-o"]).arg(&bin).arg(&src).arg("-lm").status()
+        };
+        match status {
+            Ok(s) if s.success() => println!("built Linux test program {name}"),
+            _ => {
+                println!("(no Linux gcc: skipping Linux test programs)");
+                return None;
+            }
+        }
+    }
+    Some(out)
+}
+
 pub fn build(options: &Options) -> Result<Artifacts> {
     let out = target_dir().join(TARGET).join(profile_dir(options));
     let mut files = image::collect_tree(&root().join("rootfs"))?;
@@ -210,7 +260,7 @@ pub fn build(options: &Options) -> Result<Artifacts> {
     // The disk keeps its contents between runs; delete it to start over.
     let disk_img = target_dir().join("disk.img");
     if !disk_img.exists() {
-        disk::create_image(&disk_img, &root().join("diskfs"))?;
+        disk::create_image(&disk_img, &disk_sources().iter().map(|(d, p)| (*d, p.as_path())).collect::<Vec<_>>())?;
     }
 
     cargo(
@@ -238,13 +288,18 @@ fn test(options: &Options) -> Result {
 
     let mut artifacts = build(options)?;
     let test_disk = target_dir().join("test-disk.img");
-    disk::create_image(&test_disk, &root().join("diskfs"))?;
+    disk::create_image(&test_disk, &disk_sources().iter().map(|(d, p)| (*d, p.as_path())).collect::<Vec<_>>())?;
     artifacts.disk = Some(test_disk.clone());
 
     println!("==> in-kernel tests");
     qemu::kernel_tests(&artifacts)?;
     println!("==> scripted shell session");
     qemu::shell_session(&artifacts, &root().join("tests").join("shell.txt"))?;
+
+    if target_dir().join("linux-bin").join("hello").exists() {
+        println!("==> Linux binaries");
+        qemu::shell_session(&artifacts, &root().join("tests").join("linux.txt"))?;
+    }
 
     println!("==> checking the disk written by the guest");
     let note = disk::read_file(&test_disk, "/data/note")?;

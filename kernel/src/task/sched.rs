@@ -95,7 +95,7 @@ pub(crate) fn set_zombie(task: &Arc<Task>) {
     task.set_state(State::Zombie);
 }
 
-pub(super) fn defer_drop(task: Arc<Task>) {
+pub(crate) fn defer_drop(task: Arc<Task>) {
     SCHED.lock().graveyard.push(task);
 }
 
@@ -132,6 +132,10 @@ pub fn schedule() {
                 percpu::set_kernel_stack(top);
             }
             crate::proc::switch_address_space(&prev, &next);
+            unsafe {
+                prev.fpu().save();
+                next.fpu().restore();
+            }
             let save = unsafe { (*prev.context_ptr()).as_mut_ptr() };
             let to = unsafe { (*next.context_ptr()).rsp() };
             s.current = Some(next);
@@ -156,6 +160,7 @@ pub fn timer_tick() {
         c.cpu_ticks.fetch_add(1, Ordering::Relaxed);
     }
     SLEEPERS.wake_all();
+    crate::proc::alarm::tick();
     if SLICE_LEFT.load(Ordering::Relaxed) <= 1 {
         NEED_RESCHED.store(true, Ordering::Relaxed);
     } else {

@@ -1,2 +1,4 @@
 # <device>  <mount point>  <type>
-/dev/hda    /mnt           ext2
+# The root file system (root=/dev/hda) is mounted by the kernel.
+# Extra disks can be listed here, for example:
+# /dev/hdb    /mnt           ext2

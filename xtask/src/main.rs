@@ -76,7 +76,7 @@ fn main() -> ExitCode {
         "iso" => iso(&options),
         "fsck" => {
             let img = target_dir().join("fsck-check.img");
-            disk::create_image(&img, &disk_sources().iter().map(|(d, p)| (*d, p.as_path())).collect::<Vec<_>>())
+            system_files().and_then(|sys| disk_files(&sys)).and_then(|files| disk::create_image(&img, &files))
                 .and_then(|_| disk::fsck(&img))
                 .and_then(|ran| {
                     if ran {
@@ -202,12 +202,16 @@ fn build_user() -> Result<Vec<image::ImageFile>> {
 
 /// Directories copied onto the disk image: `diskfs/` and, when a Linux
 /// C compiler is available, Linux test programs in `/linux`.
-fn disk_sources() -> Vec<(&'static str, PathBuf)> {
-    let mut v = vec![("", root().join("diskfs"))];
+/// Everything that goes on the system disk: the base system (rootfs and
+/// programs), documentation/examples from `diskfs/` in /usr/share/huldra,
+/// and Linux test programs in /opt/linux-tests when gcc is available.
+fn disk_files(system: &[image::ImageFile]) -> Result<Vec<image::ImageFile>> {
+    let mut files: Vec<image::ImageFile> = system.iter().map(|f| image::ImageFile { dest: f.dest.clone(), source: f.source.clone(), mode: f.mode }).collect();
+    files.extend(disk::tree("usr/share/huldra", &root().join("diskfs"))?);
     if let Some(dir) = build_linux_programs() {
-        v.push(("linux", dir));
+        files.extend(disk::tree("opt/linux-tests", &dir)?);
     }
-    v
+    Ok(files)
 }
 
 /// Compiles `tests/linux/*.c` with gcc -static (natively or in WSL).
@@ -250,28 +254,36 @@ fn build_linux_programs() -> Option<PathBuf> {
     Some(out)
 }
 
-pub fn build(options: &Options) -> Result<Artifacts> {
-    let out = target_dir().join(TARGET).join(profile_dir(options));
+/// The base system: `rootfs/` plus the user programs in /bin and /sbin.
+fn system_files() -> Result<Vec<image::ImageFile>> {
     let mut files = image::collect_tree(&root().join("rootfs"))?;
     files.extend(build_user()?);
-    let initrd = target_dir().join("initrd.cpio");
-    image::write_initrd(&files, &initrd)?;
+    Ok(files)
+}
 
-    // The disk keeps its contents between runs; delete it to start over.
+pub fn build(options: &Options) -> Result<Artifacts> {
+    let out = target_dir().join(TARGET).join(profile_dir(options));
+    let system = system_files()?;
+    let initrd = target_dir().join("initrd.cpio");
+    image::write_initrd(&system, &initrd)?;
+
+    // The disk is the root file system and keeps user data between runs:
+    // only programs are refreshed. Delete target/disk.img to start over.
     let disk_img = target_dir().join("disk.img");
-    if !disk_img.exists() {
-        disk::create_image(&disk_img, &disk_sources().iter().map(|(d, p)| (*d, p.as_path())).collect::<Vec<_>>())?;
+    let files = disk_files(&system)?;
+    if disk_img.exists() {
+        let n = disk::update_image(&disk_img, &files, |dest| {
+            dest.starts_with("bin/") || dest.starts_with("sbin/") || dest.starts_with("opt/linux-tests/")
+        })?;
+        if n > 0 {
+            println!("disk image: {n} files updated");
+        }
+    } else {
+        disk::create_image(&disk_img, &files)?;
     }
 
-    cargo(
-        &["build", "-p", "huldra-kernel", "--target", TARGET],
-        options,
-    )?;
-    Ok(Artifacts {
-        kernel: out.join("huldra"),
-        initrd: Some(initrd),
-        disk: Some(disk_img),
-    })
+    cargo(&["build", "-p", "huldra-kernel", "--target", TARGET], options)?;
+    Ok(Artifacts { kernel: out.join("huldra"), initrd: Some(initrd), disk: Some(disk_img) })
 }
 
 fn test(options: &Options) -> Result {
@@ -288,7 +300,7 @@ fn test(options: &Options) -> Result {
 
     let mut artifacts = build(options)?;
     let test_disk = target_dir().join("test-disk.img");
-    disk::create_image(&test_disk, &disk_sources().iter().map(|(d, p)| (*d, p.as_path())).collect::<Vec<_>>())?;
+    disk::create_image(&test_disk, &disk_files(&system_files()?)?)?;
     artifacts.disk = Some(test_disk.clone());
 
     println!("==> in-kernel tests");
@@ -296,13 +308,16 @@ fn test(options: &Options) -> Result {
     println!("==> scripted shell session");
     qemu::shell_session(&artifacts, &root().join("tests").join("shell.txt"))?;
 
+    println!("==> reboot: data on the root disk persists");
+    qemu::shell_session(&artifacts, &root().join("tests").join("persist.txt"))?;
+
     if target_dir().join("linux-bin").join("hello").exists() {
         println!("==> Linux binaries");
         qemu::shell_session(&artifacts, &root().join("tests").join("linux.txt"))?;
     }
 
     println!("==> checking the disk written by the guest");
-    let note = disk::read_file(&test_disk, "/data/note")?;
+    let note = disk::read_file(&test_disk, "/root/data/note")?;
     if note != b"persistent\n" {
         return Err(format!(
             "unexpected /data/note on disk: {:?}",

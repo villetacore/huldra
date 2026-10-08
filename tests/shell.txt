@@ -31,13 +31,13 @@
 < Huldra huldra
 > echo $?
 < 0
-> cat /mnt/README
+> cat /usr/share/huldra/README
 < ext2 file system
-> /mnt/scripts/hello.sh world
+> /usr/share/huldra/scripts/hello.sh world
 < Hello from an ext2 disk, world
-> mkdir /mnt/data && echo persistent > /mnt/data/note && cat /mnt/data/note
+> mkdir /root/data && echo persistent > /root/data/note && cat /root/data/note
 < persistent
-> cp /bin/ls /mnt/data/ls && /mnt/data/ls /mnt/data
+> cp /bin/ls /root/data/ls && /root/data/ls /root/data
 < note
 > yes | head -n 3
 < y
@@ -79,7 +79,7 @@
 > tar -cf /tmp/t.tar /etc && tar -tf /tmp/t.tar
 < etc/hostname
 > df -h
-< /mnt
+< ext2
 > echo aGVsbG8= | base64 -d
 < hello
 > diff /etc/hostname /etc/os-release

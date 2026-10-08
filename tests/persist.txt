@@ -1,0 +1,7 @@
+# Second boot from the same disk: data written in the first session must be there.
+> cat /root/data/note
+< persistent
+> grep -c "for i in" /root/.sh_history
+< 1
+> df -h /
+< /dev/hda

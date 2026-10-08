@@ -188,6 +188,11 @@ pub fn register(device: Arc<dyn BlockDevice>, major: u32, minor: u32) {
     DISKS.lock().push(disk);
 }
 
+/// Finds a registered disk by name (`hda`).
+pub fn disk_by_name(name: &str) -> Option<Arc<Disk>> {
+    DISKS.lock().iter().find(|d| d.name() == name).cloned()
+}
+
 /// Finds the disk behind a device node path such as `/dev/hda`.
 pub fn disk_for_path(path: &str) -> KResult<Arc<Disk>> {
     let node = lookup(path)?;

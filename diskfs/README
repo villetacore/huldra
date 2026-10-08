@@ -1,2 +1,3 @@
-This directory lives on an ext2 file system on the IDE disk (/dev/hda),
-mounted by init from /etc/fstab. Files written here survive reboots.
+Huldra documentation and examples, installed in /usr/share/huldra on the
+system disk (an ext2 file system on /dev/hda, mounted as the root).
+Files you create anywhere on the disk survive reboots.

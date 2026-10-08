@@ -60,7 +60,9 @@ fn base_command(a: &Artifacts, cmdline: Option<&str>) -> Result<Command> {
 }
 
 pub fn run(a: &Artifacts, o: &Options) -> Result {
-    let mut cmd = base_command(a, o.cmdline.as_deref())?;
+    // Boot from the disk unless told otherwise.
+    let cmdline = o.cmdline.clone().unwrap_or_else(|| String::from(if a.disk.is_some() { "root=/dev/hda" } else { "" }));
+    let mut cmd = base_command(a, Some(&cmdline))?;
     cmd.args(["-serial", "stdio"]);
     if o.headless {
         cmd.args(["-display", "none"]);
@@ -249,7 +251,7 @@ pub fn shell_session(a: &Artifacts, script: &Path) -> Result {
         .and_then(|l| l.local_addr())
         .map_err(|e| e.to_string())?
         .port();
-    let mut cmd = base_command(a, None)?;
+    let mut cmd = base_command(a, Some("root=/dev/hda"))?;
     cmd.args(["-display", "none"]);
     cmd.arg("-serial")
         .arg(format!("tcp:127.0.0.1:{port},server=on,wait=on"));

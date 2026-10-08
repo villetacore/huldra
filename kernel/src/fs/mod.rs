@@ -23,20 +23,42 @@ use alloc::vec::Vec;
 use huldra_abi::errno::Errno;
 use huldra_abi::fs::*;
 
-pub fn init() {
-    vfs::mount("/", tmpfs::TmpFs::new(), "rootfs").expect("mount /");
-    let unpacked = initrd::unpack_all();
-    for dir in ["/dev", "/proc", "/tmp", "/mnt", "/etc", "/root"] {
+/// Mounts the root file system: ext2 on `root_device` (e.g. `/dev/hda`)
+/// when given and usable, otherwise a tmpfs filled from the initrd.
+pub fn init(root_device: Option<&str>) {
+    crate::drivers::tty::init();
+    let devfs = devfs::new();
+    let disk_root = root_device.and_then(|dev| match mount_disk_root(dev) {
+        Ok(()) => Some(dev),
+        Err(e) => {
+            kerror!("cannot mount root file system {}: {}; falling back to the initrd", dev, e);
+            None
+        }
+    });
+    if let Some(dev) = disk_root {
+        kinfo!("root file system: {} (ext2)", dev);
+        initrd::release_all();
+    } else {
+        vfs::mount("/", tmpfs::TmpFs::new(), "rootfs").expect("mount /");
+        let unpacked = initrd::unpack_all();
+        if !unpacked {
+            let _ = mkdir("/etc", 0o755);
+            let _ = write_file("/etc/hostname", b"huldra\n");
+            let _ = write_file("/etc/motd", b"Welcome to Huldra (no initrd loaded).\n");
+        }
+    }
+    for dir in ["/dev", "/proc", "/tmp", "/mnt", "/root"] {
         let _ = mkdir(dir, 0o755);
     }
-    if !unpacked {
-        let _ = write_file("/etc/hostname", b"huldra\n");
-        let _ = write_file("/etc/motd", b"Welcome to Huldra (no initrd loaded).\n");
-    }
-    crate::drivers::tty::init();
-    vfs::mount("/dev", devfs::new(), "devfs").expect("mount /dev");
+    vfs::mount("/dev", devfs, "devfs").expect("mount /dev");
     vfs::mount("/proc", procfs::new(), "proc").expect("mount /proc");
     vfs::mount("/tmp", tmpfs::TmpFs::new(), "tmpfs").expect("mount /tmp");
+}
+
+fn mount_disk_root(dev: &str) -> KResult<()> {
+    let name = dev.strip_prefix("/dev/").ok_or(Errno::EINVAL)?;
+    let disk = crate::drivers::block::disk_by_name(name).ok_or(Errno::ENODEV)?;
+    vfs::mount("/", ext2::mount(disk)?, dev)
 }
 
 /// Flushes every mounted file system.

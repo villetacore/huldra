@@ -58,3 +58,10 @@ pub fn unpack_all() -> bool {
     }
     any
 }
+
+/// Frees the initrd without unpacking it (the root file system is on disk).
+pub fn release_all() {
+    for m in bootinfo::get().modules.iter() {
+        frame::release_range(m.start, m.end);
+    }
+}

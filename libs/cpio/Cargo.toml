@@ -1,0 +1,6 @@
+[package]
+name = "huldra-cpio"
+description = "Reader and writer for the cpio newc archive format (initrd)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true

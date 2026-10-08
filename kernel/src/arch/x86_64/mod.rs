@@ -1,9 +1,11 @@
 //! x86_64 architecture support.
 
+pub mod apic;
 pub mod context;
 pub mod cpu;
 pub mod gdt;
 pub mod idt;
+pub mod irq;
 pub mod paging;
 pub mod percpu;
 pub mod pic;
@@ -26,6 +28,12 @@ pub fn init() {
     idt::init();
     pic::init();
     pit::init();
+    irq::register(0, "timer", timer_interrupt);
+}
+
+fn timer_interrupt() {
+    crate::time::tick();
+    crate::task::sched::timer_tick();
 }
 
 pub fn enable_interrupts() {

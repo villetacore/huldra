@@ -1,17 +1,14 @@
-//! Built-in kernel shell (`ksh`), the stand-in for /sbin/init until
-//! user mode exists. Reads from the PS/2 keyboard and the serial port.
+//! Built-in kernel shell: a stand-in for /sbin/init until user mode exists.
+//! Reads lines from the console TTY (which does the line editing).
 
-use crate::arch;
-use crate::{bootinfo, console, fs, mm, syscall, time};
+use crate::fs::{self, vfs, Inode};
+use crate::{arch, bootinfo, mm, time};
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
-use core::arch::asm;
 use core::fmt::{self, Write};
+use huldra_abi::fs::*;
 
-const MAX_LINE: usize = 256;
-
-/// Command output: the console, or a buffer when redirected with `>`/`>>`.
 enum Out {
     Console,
     Buffer(String),
@@ -33,80 +30,33 @@ macro_rules! out {
 
 type CmdResult = Result<(), String>;
 
-fn fs_err(path: &str) -> impl Fn(fs::FsError) -> String + '_ {
-    move |e| format!("{}: {}", path, e)
-}
-
-pub fn run() -> ! {
-    if let Ok(motd) = fs::read("/etc/motd") {
+pub fn run() -> i32 {
+    if let Ok(motd) = fs::read_file("/etc/motd") {
         print!("\n{}", String::from_utf8_lossy(&motd));
     }
-    let mut line = String::new();
+    let mut cwd = String::from("/root");
+    let tty = crate::drivers::tty::console();
     loop {
-        prompt();
-        read_line(&mut line);
-        execute(&line);
+        print!("\x1b[92mroot@{}\x1b[0m:\x1b[94m{}\x1b[0m# ", hostname(), cwd);
+        let mut buf = [0u8; 1024];
+        let n = tty.read_at(0, &mut buf).unwrap_or(0);
+        let line = String::from_utf8_lossy(&buf[..n]).into_owned();
+        execute(line.trim(), &mut cwd);
     }
 }
 
 fn hostname() -> String {
-    fs::read("/etc/hostname")
-        .ok()
+    fs::read_file("/etc/hostname")
         .map(|h| String::from_utf8_lossy(&h).trim().to_string())
+        .ok()
         .filter(|h| !h.is_empty())
-        .unwrap_or_else(|| "localhost".to_string())
+        .unwrap_or_else(|| "localhost".into())
 }
 
-fn prompt() {
-    print!("[92mroot@{}[0m:[94m{}[0m# ", hostname(), fs::cwd());
-}
-
-fn read_char() -> u8 {
-    crate::drivers::read_char()
-}
-
-fn read_line(line: &mut String) {
-    line.clear();
-    loop {
-        match read_char() {
-            b'\r' | b'\n' => {
-                println!();
-                return;
-            }
-            0x08 | 0x7F => {
-                if line.pop().is_some() {
-                    print!(" ");
-                }
-            }
-            0x03 => {
-                println!("^C");
-                line.clear();
-                return;
-            }
-            0x0C => {
-                console::clear();
-                prompt();
-                print!("{}", line);
-            }
-            c @ 0x20..=0x7E if line.len() < MAX_LINE => {
-                line.push(c as char);
-                print!("{}", c as char);
-            }
-            _ => {}
-        }
-    }
-}
-
-fn error(msg: &str) {
-    println!("[91m{}[0m", msg);
-}
-
-fn execute(line: &str) {
-    let line = line.trim();
+fn execute(line: &str, cwd: &mut String) {
     if line.is_empty() || line.starts_with('#') {
         return;
     }
-
     let (command, redirect) = match line.find('>') {
         None => (line, None),
         Some(i) => {
@@ -115,222 +65,115 @@ fn execute(line: &str) {
                 Some(t) => (true, t),
                 None => (false, &rest[1..]),
             };
-            let target = target.trim();
-            if target.is_empty() || target.contains('>') {
-                error("sh: syntax error near '>'");
-                return;
-            }
-            (cmd, Some((target, append)))
+            (cmd, Some((target.trim(), append)))
         }
     };
-
     let args: Vec<&str> = command.split_whitespace().collect();
     if args.is_empty() {
         return;
     }
-
     let mut out = if redirect.is_some() { Out::Buffer(String::new()) } else { Out::Console };
-    if let Err(msg) = run_command(&args, &mut out) {
-        error(&format!("{}: {}", args[0], msg));
+    if let Err(msg) = run_command(&args, &mut out, cwd) {
+        println!("\x1b[91m{}: {}\x1b[0m", args[0], msg);
     }
     if let (Some((path, append)), Out::Buffer(buf)) = (redirect, out) {
-        if let Err(e) = fs::write(path, buf.as_bytes(), append) {
-            error(&format!("sh: {}: {}", path, e));
+        let result = vfs::normalize(cwd, path).and_then(|p| {
+            let flags = O_WRONLY | O_CREAT | if append { O_APPEND } else { O_TRUNC };
+            fs::open(&p, flags, 0o644)?.write(buf.as_bytes())
+        });
+        if let Err(e) = result {
+            println!("\x1b[91msh: {}: {}\x1b[0m", path, e);
         }
     }
 }
 
-fn run_command(args: &[&str], out: &mut Out) -> CmdResult {
+fn path(cwd: &str, p: &str) -> Result<String, String> {
+    vfs::normalize(cwd, p).map_err(|e| format!("{}: {}", p, e))
+}
+
+fn err(p: &str) -> impl Fn(huldra_abi::errno::Errno) -> String + '_ {
+    move |e| format!("{}: {}", p, e)
+}
+
+fn run_command(args: &[&str], out: &mut Out, cwd: &mut String) -> CmdResult {
     let rest = &args[1..];
     match args[0] {
-        "help" => help(out),
+        "help" => out!(out, "commands: ls cd pwd cat echo mkdir rmdir rm touch mv uname uptime free bootinfo reboot poweroff"),
         "echo" => out!(out, "{}", rest.join(" ")),
-        "clear" => console::clear(),
-        "uname" => uname(rest, out),
-        "uptime" => uptime(out),
-        "free" => free(out),
-        "bootinfo" => boot_info(out),
-        "cpuinfo" => cpuinfo(out),
-        "ls" => return ls(rest, out),
-        "cd" => return fs::chdir(rest.first().copied().unwrap_or("/root")).map_err(fs_err(rest.first().copied().unwrap_or("/root"))),
-        "pwd" => out!(out, "{}", fs::cwd()),
-        "mkdir" => return for_each_path(rest, fs::mkdir),
-        "touch" => return for_each_path(rest, fs::touch),
-        "cat" => return cat(rest, out),
-        "rm" => return rm(rest),
-        "syscall" => syscall_demo(out),
-        "panic" => panic!("panic requested from the shell"),
-        "reboot" => arch::reboot(),
-        "poweroff" | "halt" => {
-            println!("System is going down.");
-            arch::poweroff()
-        }
-        _ => return Err("command not found".to_string()),
-    }
-    Ok(())
-}
-
-fn help(out: &mut Out) {
-    const COMMANDS: &[(&str, &str)] = &[
-        ("help", "show this help"),
-        ("echo TEXT", "print TEXT (supports > and >> redirection)"),
-        ("ls [PATH]", "list directory contents"),
-        ("cd [DIR]", "change the working directory"),
-        ("pwd", "print the working directory"),
-        ("cat FILE...", "print files"),
-        ("touch FILE...", "create empty files"),
-        ("mkdir DIR...", "create directories"),
-        ("rm [-r] PATH...", "remove files or directories"),
-        ("uname [-a]", "print system information"),
-        ("uptime", "time since boot"),
-        ("free", "memory usage"),
-        ("bootinfo", "boot protocol, command line, memory map"),
-        ("cpuinfo", "CPU vendor and model"),
-        ("syscall", "issue write(2) and getpid(2) via int 0x80"),
-        ("clear", "clear the screen (also Ctrl+L)"),
-        ("panic", "trigger a kernel panic"),
-        ("reboot", "restart the machine"),
-        ("poweroff", "turn the machine off"),
-    ];
-    out!(out, "Huldra kernel shell. Commands:");
-    for (cmd, desc) in COMMANDS {
-        out!(out, "  {:<18}{}", cmd, desc);
-    }
-}
-
-fn uname(args: &[&str], out: &mut Out) {
-    if args.first() == Some(&"-a") {
-        out!(out, "{} {} {} x86_64", crate::NAME, hostname(), crate::VERSION);
-    } else {
-        out!(out, "{}", crate::NAME);
-    }
-}
-
-fn uptime(out: &mut Out) {
-    let secs = time::uptime_ms() / 1000;
-    out!(
-        out,
-        "up {}:{:02}:{:02} ({} ticks at {} Hz)",
-        secs / 3600,
-        secs / 60 % 60,
-        secs % 60,
-        time::ticks(),
-        time::HZ
-    );
-}
-
-fn free(out: &mut Out) {
-    let heap = mm::heap::stats();
-    let (free, total) = mm::frame::stats();
-    let kib = (mm::PAGE_SIZE / 1024) as usize;
-    out!(out, "{:<8}{:>12}{:>12}{:>12}", "", "total", "used", "free");
-    out!(out, "{:<8}{:>9} KiB{:>9} KiB{:>9} KiB", "Mem:", total * kib, (total - free) * kib, free * kib);
-    out!(out, "{:<8}{:>9} KiB{:>9} KiB", "Heap:", (heap.slab_pages_bytes + heap.large_bytes) / 1024, heap.allocated / 1024);
-}
-
-fn boot_info(out: &mut Out) {
-    let k = mm::kernel_layout();
-    let b = bootinfo::get();
-    out!(out, "protocol:   {}", b.protocol);
-    out!(out, "bootloader: {}", if b.bootloader.is_empty() { "-" } else { b.bootloader.as_str() });
-    out!(out, "cmdline:    {}", b.cmdline.as_str());
-    out!(out, "kernel:     {:#x}..{:#x} ({} KiB)", k.start, k.end, (k.end - k.start) / 1024);
-    out!(out, "page table: {:#x}", arch::cpu::read_cr3());
-    for m in b.modules.iter() {
-        out!(out, "module:     {:#x}..{:#x} {}", m.start, m.end, m.cmdline.as_str());
-    }
-    out!(out, "memory map:");
-    for r in b.memory.iter() {
-        out!(out, "  {:#012x}..{:#012x} {:>10} KiB  {}", r.base, r.base + r.len, r.len / 1024, r.kind_name());
-    }
-}
-
-fn cpuinfo(out: &mut Out) {
-    use core::arch::x86_64::__cpuid;
-    let regs = __cpuid;
-
-    let v = regs(0);
-    let mut vendor = Vec::new();
-    for r in [v.ebx, v.edx, v.ecx] {
-        vendor.extend_from_slice(&r.to_le_bytes());
-    }
-    out!(out, "vendor: {}", String::from_utf8_lossy(&vendor));
-
-    if regs(0x8000_0000).eax >= 0x8000_0004 {
-        let mut brand = Vec::new();
-        for leaf in 0x8000_0002..=0x8000_0004 {
-            let r = regs(leaf);
-            for x in [r.eax, r.ebx, r.ecx, r.edx] {
-                brand.extend_from_slice(&x.to_le_bytes());
+        "clear" => crate::console::clear(),
+        "uname" => {
+            if rest.first() == Some(&"-a") {
+                out!(out, "{} {} {} x86_64", crate::NAME, hostname(), crate::VERSION);
+            } else {
+                out!(out, "{}", crate::NAME);
             }
         }
-        let brand = String::from_utf8_lossy(&brand);
-        out!(out, "model:  {}", brand.trim_matches(|c: char| c == '\0' || c == ' '));
-    }
-
-    let f = regs(1);
-    out!(
-        out,
-        "family: {} model: {} stepping: {}",
-        (f.eax >> 8) & 0xF,
-        (f.eax >> 4) & 0xF,
-        f.eax & 0xF
-    );
-}
-
-fn ls(args: &[&str], out: &mut Out) -> CmdResult {
-    let path = args.first().copied().unwrap_or(".");
-    let entries = fs::list(path).map_err(fs_err(path))?;
-    for e in entries {
-        if e.is_dir {
-            out!(out, "d {:>8}  {}/", e.size, e.name);
-        } else {
-            out!(out, "- {:>8}  {}", e.size, e.name);
+        "uptime" => {
+            let s = time::uptime_ms() / 1000;
+            out!(out, "up {}:{:02}:{:02}", s / 3600, s / 60 % 60, s % 60);
         }
+        "free" => {
+            let (free, total) = mm::frame::stats();
+            out!(out, "Mem: {} KiB total, {} KiB free", total * 4, free * 4);
+        }
+        "bootinfo" => {
+            let b = bootinfo::get();
+            out!(out, "protocol: {}\ncmdline: {}", b.protocol, b.cmdline.as_str());
+            for r in b.memory.iter() {
+                out!(out, "  {:#012x}..{:#012x} {}", r.base, r.base + r.len, r.kind_name());
+            }
+        }
+        "pwd" => out!(out, "{}", cwd),
+        "cd" => {
+            let p = path(cwd, rest.first().copied().unwrap_or("/root"))?;
+            if !fs::stat(&p).map_err(err(&p))?.is_dir() {
+                return Err(format!("{}: Not a directory", p));
+            }
+            *cwd = p;
+        }
+        "ls" => {
+            let p = path(cwd, rest.first().copied().unwrap_or("."))?;
+            let node = vfs::lookup(&p).map_err(err(&p))?;
+            if !node.metadata().is_dir() {
+                out!(out, "{}", p);
+                return Ok(());
+            }
+            for e in node.readdir().map_err(err(&p))? {
+                let suffix = if e.kind == fs::FileType::Directory { "/" } else { "" };
+                out!(out, "{}{}", e.name, suffix);
+            }
+        }
+        "cat" => {
+            for a in rest {
+                let p = path(cwd, a)?;
+                let data = fs::read_file(&p).map_err(err(a))?;
+                let _ = write!(out, "{}", String::from_utf8_lossy(&data));
+            }
+        }
+        "mkdir" => {
+            for a in rest {
+                fs::mkdir(&path(cwd, a)?, 0o755).map_err(err(a))?;
+            }
+        }
+        "rmdir" => {
+            for a in rest {
+                fs::rmdir(&path(cwd, a)?).map_err(err(a))?;
+            }
+        }
+        "rm" => {
+            for a in rest {
+                fs::unlink(&path(cwd, a)?).map_err(err(a))?;
+            }
+        }
+        "touch" => {
+            for a in rest {
+                fs::open(&path(cwd, a)?, O_WRONLY | O_CREAT, 0o644).map_err(err(a))?;
+            }
+        }
+        "mv" if rest.len() == 2 => fs::rename(&path(cwd, rest[0])?, &path(cwd, rest[1])?).map_err(err(rest[0]))?,
+        "reboot" => arch::reboot(),
+        "poweroff" | "halt" => arch::poweroff(),
+        _ => return Err("command not found".into()),
     }
     Ok(())
-}
-
-fn cat(args: &[&str], out: &mut Out) -> CmdResult {
-    if args.is_empty() {
-        return Err("missing operand".to_string());
-    }
-    for path in args {
-        let data = fs::read(path).map_err(fs_err(path))?;
-        let _ = write!(out, "{}", String::from_utf8_lossy(&data));
-    }
-    Ok(())
-}
-
-fn rm(args: &[&str]) -> CmdResult {
-    let recursive = args.first() == Some(&"-r");
-    let paths = if recursive { &args[1..] } else { args };
-    for_each_path(paths, |p| fs::remove(p, recursive))
-}
-
-fn for_each_path(paths: &[&str], f: impl Fn(&str) -> Result<(), fs::FsError>) -> CmdResult {
-    if paths.is_empty() {
-        return Err("missing operand".to_string());
-    }
-    for path in paths {
-        f(path).map_err(fs_err(path))?;
-    }
-    Ok(())
-}
-
-fn syscall_demo(out: &mut Out) {
-    let msg = "hello from write(2) via int 0x80\n";
-    let written: i64;
-    let pid: i64;
-    unsafe {
-        asm!(
-            "int 0x80",
-            inlateout("rax") syscall::SYS_WRITE as i64 => written,
-            in("rdi") 1u64,
-            in("rsi") msg.as_ptr(),
-            in("rdx") msg.len(),
-        );
-        asm!("int 0x80", inlateout("rax") syscall::SYS_GETPID as i64 => pid);
-    }
-    out!(out, "write returned {}, getpid returned {}", written, pid);
 }

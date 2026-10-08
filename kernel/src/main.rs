@@ -42,6 +42,7 @@ pub extern "C" fn kernel_main(magic: u32, info: u32) -> ! {
     kinfo!("booted via {}, cmdline: '{}'", boot.protocol, boot.cmdline.as_str());
 
     arch::init();
+    time::init();
     mm::frame::init(boot);
     mm::vmm::init(boot);
     mm::frame::add_high_memory(boot);
@@ -54,8 +55,9 @@ pub extern "C" fn kernel_main(magic: u32, info: u32) -> ! {
         k.start
     );
 
-    fs::init();
     task::sched::init();
+    fs::init();
+    drivers::init();
     arch::enable_interrupts();
 
     let init = if boot.has_flag("ktest") {

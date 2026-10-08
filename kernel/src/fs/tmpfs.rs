@@ -1,199 +1,212 @@
-//! In-memory file system.
+//! tmpfs: an in-memory file system (used for `/` and `/tmp`).
 
+use super::vfs::*;
+use crate::sync::Mutex;
 use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
+use alloc::sync::Arc;
 use alloc::vec::Vec;
-use core::fmt;
+use core::any::Any;
+use core::sync::atomic::{AtomicI64, AtomicU32, AtomicU64, Ordering};
+use huldra_abi::errno::Errno;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FsError {
-    NotFound,
-    NotADirectory,
-    IsADirectory,
-    AlreadyExists,
-    NotEmpty,
-    InvalidPath,
-}
+static NEXT_INO: AtomicU64 = AtomicU64::new(2);
 
-impl fmt::Display for FsError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str(match self {
-            FsError::NotFound => "No such file or directory",
-            FsError::NotADirectory => "Not a directory",
-            FsError::IsADirectory => "Is a directory",
-            FsError::AlreadyExists => "File exists",
-            FsError::NotEmpty => "Directory not empty",
-            FsError::InvalidPath => "Invalid argument",
-        })
-    }
-}
-
-pub struct DirEntry {
-    pub name: String,
-    pub is_dir: bool,
-    pub size: usize,
-}
-
-enum Node {
+enum Data {
     File(Vec<u8>),
-    Dir(BTreeMap<String, Node>),
+    Dir(BTreeMap<String, Arc<TmpInode>>),
 }
 
-impl Node {
-    fn size(&self) -> usize {
-        match self {
-            Node::File(data) => data.len(),
-            Node::Dir(children) => children.len(),
-        }
-    }
+pub struct TmpInode {
+    ino: u64,
+    dev: u64,
+    kind: FileType,
+    perm: AtomicU32,
+    mtime: AtomicI64,
+    data: Mutex<Data>,
 }
 
-pub struct Tmpfs {
-    root: Node,
-    cwd: Vec<String>,
-}
-
-impl Tmpfs {
-    pub fn new() -> Self {
-        Tmpfs { root: Node::Dir(BTreeMap::new()), cwd: Vec::new() }
-    }
-
-    /// Resolves `path` (absolute or relative to cwd) into components,
-    /// normalizing `.` and `..`.
-    fn components(&self, path: &str) -> Vec<String> {
-        let mut parts = if path.starts_with('/') { Vec::new() } else { self.cwd.clone() };
-        for part in path.split('/') {
-            match part {
-                "" | "." => {}
-                ".." => {
-                    parts.pop();
-                }
-                name => parts.push(name.to_string()),
-            }
-        }
-        parts
-    }
-
-    fn lookup(&self, parts: &[String]) -> Result<&Node, FsError> {
-        let mut node = &self.root;
-        for part in parts {
-            match node {
-                Node::Dir(children) => node = children.get(part).ok_or(FsError::NotFound)?,
-                Node::File(_) => return Err(FsError::NotADirectory),
-            }
-        }
-        Ok(node)
-    }
-
-    fn lookup_mut(&mut self, parts: &[String]) -> Result<&mut Node, FsError> {
-        let mut node = &mut self.root;
-        for part in parts {
-            match node {
-                Node::Dir(children) => node = children.get_mut(part).ok_or(FsError::NotFound)?,
-                Node::File(_) => return Err(FsError::NotADirectory),
-            }
-        }
-        Ok(node)
-    }
-
-    /// Returns the parent directory's entries and the final name in `path`.
-    fn parent_mut(&mut self, path: &str) -> Result<(&mut BTreeMap<String, Node>, String), FsError> {
-        let mut parts = self.components(path);
-        let name = parts.pop().ok_or(FsError::InvalidPath)?;
-        match self.lookup_mut(&parts)? {
-            Node::Dir(children) => Ok((children, name)),
-            Node::File(_) => Err(FsError::NotADirectory),
-        }
-    }
-
-    pub fn mkdir(&mut self, path: &str) -> Result<(), FsError> {
-        let (dir, name) = self.parent_mut(path)?;
-        if dir.contains_key(&name) {
-            return Err(FsError::AlreadyExists);
-        }
-        dir.insert(name, Node::Dir(BTreeMap::new()));
-        Ok(())
-    }
-
-    pub fn touch(&mut self, path: &str) -> Result<(), FsError> {
-        let (dir, name) = self.parent_mut(path)?;
-        dir.entry(name).or_insert_with(|| Node::File(Vec::new()));
-        Ok(())
-    }
-
-    pub fn write(&mut self, path: &str, data: &[u8], append: bool) -> Result<(), FsError> {
-        let (dir, name) = self.parent_mut(path)?;
-        match dir.entry(name).or_insert_with(|| Node::File(Vec::new())) {
-            Node::Dir(_) => Err(FsError::IsADirectory),
-            Node::File(contents) => {
-                if !append {
-                    contents.clear();
-                }
-                contents.extend_from_slice(data);
-                Ok(())
-            }
-        }
-    }
-
-    pub fn read(&self, path: &str) -> Result<Vec<u8>, FsError> {
-        match self.lookup(&self.components(path))? {
-            Node::File(data) => Ok(data.clone()),
-            Node::Dir(_) => Err(FsError::IsADirectory),
-        }
-    }
-
-    pub fn list(&self, path: &str) -> Result<Vec<DirEntry>, FsError> {
-        let parts = self.components(path);
-        Ok(match self.lookup(&parts)? {
-            Node::Dir(children) => children
-                .iter()
-                .map(|(name, node)| DirEntry {
-                    name: name.clone(),
-                    is_dir: matches!(node, Node::Dir(_)),
-                    size: node.size(),
-                })
-                .collect(),
-            file => alloc::vec![DirEntry {
-                name: parts.last().cloned().unwrap_or_default(),
-                is_dir: false,
-                size: file.size(),
-            }],
+impl TmpInode {
+    fn new(dev: u64, ino: u64, kind: FileType, perm: u32) -> Arc<TmpInode> {
+        let data = match kind {
+            FileType::Directory => Data::Dir(BTreeMap::new()),
+            _ => Data::File(Vec::new()),
+        };
+        Arc::new(TmpInode {
+            ino,
+            dev,
+            kind,
+            perm: AtomicU32::new(perm),
+            mtime: AtomicI64::new(crate::time::now()),
+            data: Mutex::new(data),
         })
     }
 
-    pub fn remove(&mut self, path: &str, recursive: bool) -> Result<(), FsError> {
-        let (dir, name) = self.parent_mut(path)?;
-        match dir.get(&name) {
-            None => return Err(FsError::NotFound),
-            Some(Node::Dir(children)) if !children.is_empty() && !recursive => {
-                return Err(FsError::NotEmpty)
+    fn touch(&self) {
+        self.mtime.store(crate::time::now(), Ordering::Relaxed);
+    }
+}
+
+impl Inode for TmpInode {
+    fn metadata(&self) -> Metadata {
+        let mut m = Metadata::new(self.dev, self.ino, self.kind, self.perm.load(Ordering::Relaxed));
+        m.mtime = self.mtime.load(Ordering::Relaxed);
+        match &*self.data.lock() {
+            Data::File(v) => m.size = v.len() as u64,
+            Data::Dir(d) => {
+                m.size = 4096;
+                m.nlink = 2 + d.values().filter(|c| c.kind == FileType::Directory).count() as u32;
             }
-            _ => {}
         }
-        dir.remove(&name);
+        m
+    }
+
+    fn read_at(&self, offset: u64, buf: &mut [u8]) -> KResult<usize> {
+        match &*self.data.lock() {
+            Data::Dir(_) => Err(Errno::EISDIR),
+            Data::File(v) => {
+                let start = (offset as usize).min(v.len());
+                let n = buf.len().min(v.len() - start);
+                buf[..n].copy_from_slice(&v[start..start + n]);
+                Ok(n)
+            }
+        }
+    }
+
+    fn write_at(&self, offset: u64, buf: &[u8]) -> KResult<usize> {
+        let mut data = self.data.lock();
+        match &mut *data {
+            Data::Dir(_) => Err(Errno::EISDIR),
+            Data::File(v) => {
+                let end = offset as usize + buf.len();
+                if end > v.len() {
+                    v.resize(end, 0);
+                }
+                v[offset as usize..end].copy_from_slice(buf);
+                drop(data);
+                self.touch();
+                Ok(buf.len())
+            }
+        }
+    }
+
+    fn truncate(&self, size: u64) -> KResult<()> {
+        match &mut *self.data.lock() {
+            Data::Dir(_) => Err(Errno::EISDIR),
+            Data::File(v) => {
+                v.resize(size as usize, 0);
+                Ok(())
+            }
+        }
+    }
+
+    fn lookup(&self, name: &str) -> KResult<Arc<dyn Inode>> {
+        match &*self.data.lock() {
+            Data::File(_) => Err(Errno::ENOTDIR),
+            Data::Dir(d) => d.get(name).map(|n| n.clone() as Arc<dyn Inode>).ok_or(Errno::ENOENT),
+        }
+    }
+
+    fn create(&self, name: &str, kind: FileType, perm: u32) -> KResult<Arc<dyn Inode>> {
+        if !matches!(kind, FileType::Regular | FileType::Directory) {
+            return Err(Errno::EPERM);
+        }
+        let mut data = self.data.lock();
+        let Data::Dir(d) = &mut *data else { return Err(Errno::ENOTDIR) };
+        if d.contains_key(name) {
+            return Err(Errno::EEXIST);
+        }
+        let node = TmpInode::new(self.dev, NEXT_INO.fetch_add(1, Ordering::Relaxed), kind, perm);
+        d.insert(name.to_string(), node.clone());
+        drop(data);
+        self.touch();
+        Ok(node)
+    }
+
+    fn unlink(&self, name: &str) -> KResult<()> {
+        let mut data = self.data.lock();
+        let Data::Dir(d) = &mut *data else { return Err(Errno::ENOTDIR) };
+        let node = d.get(name).ok_or(Errno::ENOENT)?;
+        if let Data::Dir(children) = &*node.data.lock() {
+            if !children.is_empty() {
+                return Err(Errno::ENOTEMPTY);
+            }
+        }
+        d.remove(name);
+        drop(data);
+        self.touch();
         Ok(())
     }
 
-    pub fn chdir(&mut self, path: &str) -> Result<(), FsError> {
-        let parts = self.components(path);
-        match self.lookup(&parts)? {
-            Node::Dir(_) => {
-                self.cwd = parts;
-                Ok(())
+    fn rename(&self, old: &str, target: &Arc<dyn Inode>, new: &str) -> KResult<()> {
+        let target = target.as_any().downcast_ref::<TmpInode>().ok_or(Errno::EXDEV)?;
+        if target.dev != self.dev {
+            return Err(Errno::EXDEV);
+        }
+        fn check_target(d: &BTreeMap<String, Arc<TmpInode>>, new: &str) -> KResult<()> {
+            match d.get(new) {
+                Some(existing) if existing.kind == FileType::Directory => Err(Errno::EISDIR),
+                _ => Ok(()),
             }
-            Node::File(_) => Err(FsError::NotADirectory),
+        }
+
+        if core::ptr::eq(self, target) {
+            let mut data = self.data.lock();
+            let Data::Dir(d) = &mut *data else { return Err(Errno::ENOTDIR) };
+            if old == new {
+                return d.contains_key(old).then_some(()).ok_or(Errno::ENOENT);
+            }
+            check_target(d, new)?;
+            let node = d.remove(old).ok_or(Errno::ENOENT)?;
+            d.insert(new.to_string(), node);
+            return Ok(());
+        }
+
+        // Lock both directories in address order so concurrent renames
+        // in opposite directions cannot deadlock.
+        let self_first = (self as *const TmpInode) < (target as *const TmpInode);
+        let (mut a, mut b) = if self_first {
+            let a = self.data.lock();
+            (a, target.data.lock())
+        } else {
+            let b = target.data.lock();
+            (self.data.lock(), b)
+        };
+        let (Data::Dir(src), Data::Dir(dst)) = (&mut *a, &mut *b) else { return Err(Errno::ENOTDIR) };
+        check_target(dst, new)?;
+        let node = src.remove(old).ok_or(Errno::ENOENT)?;
+        dst.insert(new.to_string(), node);
+        Ok(())
+    }
+
+    fn readdir(&self) -> KResult<Vec<DirEntry>> {
+        match &*self.data.lock() {
+            Data::File(_) => Err(Errno::ENOTDIR),
+            Data::Dir(d) => Ok(d.iter().map(|(n, c)| DirEntry { name: n.clone(), ino: c.ino, kind: c.kind }).collect()),
         }
     }
 
-    pub fn cwd(&self) -> String {
-        if self.cwd.is_empty() {
-            return "/".to_string();
-        }
-        let mut s = String::new();
-        for part in &self.cwd {
-            s.push('/');
-            s.push_str(part);
-        }
-        s
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+pub struct TmpFs {
+    root: Arc<TmpInode>,
+}
+
+impl TmpFs {
+    pub fn new() -> Arc<TmpFs> {
+        Arc::new(TmpFs { root: TmpInode::new(alloc_dev(), 1, FileType::Directory, 0o755) })
+    }
+}
+
+impl FileSystem for TmpFs {
+    fn name(&self) -> &'static str {
+        "tmpfs"
+    }
+
+    fn root(&self) -> Arc<dyn Inode> {
+        self.root.clone()
     }
 }

@@ -3,6 +3,7 @@
 //! Builds the kernel and user space for the bare-metal target, packs the
 //! initrd and disk image, runs QEMU and drives automated tests.
 
+mod image;
 mod qemu;
 
 use std::env;
@@ -132,9 +133,13 @@ fn cargo(args: &[&str], options: &Options) -> Result {
 }
 
 pub fn build(options: &Options) -> Result<Artifacts> {
-    cargo(&["build", "-p", "huldra-kernel", "--target", TARGET], options)?;
     let out = target_dir().join(TARGET).join(profile_dir(options));
-    Ok(Artifacts { kernel: out.join("huldra"), initrd: None, disk: None })
+    let files = image::collect_tree(&root().join("rootfs"))?;
+    let initrd = target_dir().join("initrd.cpio");
+    image::write_initrd(&files, &initrd)?;
+
+    cargo(&["build", "-p", "huldra-kernel", "--target", TARGET], options)?;
+    Ok(Artifacts { kernel: out.join("huldra"), initrd: Some(initrd), disk: None })
 }
 
 fn test(options: &Options) -> Result {

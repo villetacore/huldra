@@ -1,9 +1,8 @@
 //! Common trap entry: CPU exceptions, hardware IRQs and system calls.
 
 use super::cpu::read_cr2;
-use super::{halt_forever, pic};
+use super::{halt_forever, irq};
 use crate::console;
-use crate::drivers::keyboard;
 
 /// Register state saved by `isr_common` (see trap.S), lowest address first.
 #[repr(C)]
@@ -69,8 +68,6 @@ const EXCEPTIONS: [&str; 32] = [
     "Reserved",
 ];
 
-pub const TIMER_VECTOR: u64 = 32;
-
 impl TrapFrame {
     pub fn from_user(&self) -> bool {
         self.cs & 3 == 3
@@ -82,19 +79,11 @@ extern "C" fn trap_dispatch(frame: &mut TrapFrame) {
     match frame.vector {
         3 => kinfo!("breakpoint at {:#x}", frame.rip),
         0..=31 => fatal_exception(frame),
-        32..=47 => {
-            let irq = (frame.vector - pic::IRQ_BASE as u64) as u8;
-            match irq {
-                0 => {
-                    crate::time::tick();
-                    crate::task::sched::timer_tick();
-                }
-                1 => keyboard::handle_irq(),
-                4 => crate::drivers::serial::handle_irq(),
-                _ => {}
-            }
-            pic::eoi(irq);
+        v if v >= irq::IRQ_BASE as u64 && v < (irq::IRQ_BASE as usize + irq::IRQ_LINES) as u64 => {
+            irq::dispatch((v - irq::IRQ_BASE as u64) as u8);
         }
+        v if v == super::apic::TIMER_VECTOR as u64 => super::apic::timer_interrupt(),
+        v if v == super::apic::SPURIOUS_VECTOR as u64 => {}
         0x80 => {
             super::enable_interrupts();
             crate::syscall::dispatch(frame);

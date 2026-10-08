@@ -2,7 +2,7 @@
 
 use super::port::{inb, io_wait, outb};
 
-pub const IRQ_BASE: u8 = 32;
+pub const IRQ_BASE: u8 = super::irq::IRQ_BASE;
 
 const MASTER_CMD: u16 = 0x20;
 const MASTER_DATA: u16 = 0x21;
@@ -29,17 +29,27 @@ pub fn init() {
         outb(SLAVE_DATA, 0x01);
         io_wait();
 
-        // Unmask timer (IRQ0), keyboard (IRQ1) and COM1 (IRQ4).
-        outb(MASTER_DATA, 0xEC);
+        // Everything masked except the cascade; drivers unmask their lines.
+        outb(MASTER_DATA, 0xFB);
         outb(SLAVE_DATA, 0xFF);
     }
 }
 
-#[allow(dead_code)]
 pub fn unmask(irq: u8) {
     unsafe {
+        if irq >= 16 {
+            return;
+        }
         let (port, bit) = if irq < 8 { (MASTER_DATA, irq) } else { (SLAVE_DATA, irq - 8) };
         outb(port, inb(port) & !(1 << bit));
+    }
+}
+
+/// Masks every line (when the I/O APIC takes over).
+pub fn disable() {
+    unsafe {
+        outb(MASTER_DATA, 0xFF);
+        outb(SLAVE_DATA, 0xFF);
     }
 }
 

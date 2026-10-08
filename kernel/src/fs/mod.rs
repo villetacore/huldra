@@ -1,87 +1,269 @@
-//! Virtual file system. For now a single in-memory tmpfs mounted at `/`.
+//! File systems.
+//!
+//! [`vfs`] defines the `Inode`/`FileSystem` interfaces, mounts and path
+//! lookup; [`file`] the open file descriptions and descriptor tables. The
+//! functions here implement the path-based operations used by system calls
+//! (all paths absolute and normalized, see [`vfs::normalize`]).
 
-mod tmpfs;
+pub mod devfs;
+pub mod file;
+pub mod initrd;
+pub mod pipe;
+pub mod procfs;
+pub mod tmpfs;
+pub mod vfs;
 
-pub use tmpfs::{DirEntry, FsError};
+pub use file::{FdTable, OpenFile};
+pub use vfs::{FileType, Inode, KResult, Metadata};
 
-use crate::sync::SpinLock;
 use alloc::string::String;
+use alloc::sync::Arc;
 use alloc::vec::Vec;
-use tmpfs::Tmpfs;
-
-static ROOT: SpinLock<Option<Tmpfs>> = SpinLock::new(None);
-
-fn with<R>(f: impl FnOnce(&mut Tmpfs) -> R) -> R {
-    f(ROOT.lock().as_mut().expect("fs not initialized"))
-}
+use huldra_abi::errno::Errno;
+use huldra_abi::fs::*;
 
 pub fn init() {
-    let mut fs = Tmpfs::new();
-    for dir in ["/bin", "/dev", "/etc", "/home", "/proc", "/root", "/tmp", "/usr", "/var"] {
-        fs.mkdir(dir).expect("mkdir");
+    vfs::mount("/", tmpfs::TmpFs::new(), "rootfs").expect("mount /");
+    let unpacked = initrd::unpack_all();
+    for dir in ["/dev", "/proc", "/tmp", "/mnt", "/etc", "/root"] {
+        let _ = mkdir(dir, 0o755);
     }
-    fs.write("/etc/hostname", b"huldra\n", false).expect("write");
-    fs.write("/etc/os-release", b"NAME=\"Huldra\"\nID=huldra\nVERSION=\"0.1.0\"\n", false)
-        .expect("write");
-    fs.write(
-        "/etc/motd",
-        b"Welcome to Huldra, a small Unix-like kernel written in Rust.\nType 'help' to see available commands.\n",
-        false,
-    )
-    .expect("write");
-    fs.chdir("/root").expect("chdir");
-    *ROOT.lock() = Some(fs);
+    if !unpacked {
+        let _ = write_file("/etc/hostname", b"huldra\n");
+        let _ = write_file("/etc/motd", b"Welcome to Huldra (no initrd loaded).\n");
+    }
+    crate::drivers::tty::init();
+    vfs::mount("/dev", devfs::new(), "devfs").expect("mount /dev");
+    vfs::mount("/proc", procfs::new(), "proc").expect("mount /proc");
+    vfs::mount("/tmp", tmpfs::TmpFs::new(), "tmpfs").expect("mount /tmp");
 }
 
-pub fn mkdir(path: &str) -> Result<(), FsError> {
-    with(|fs| fs.mkdir(path))
+/// Opens (and possibly creates) the file at `path`.
+pub fn open(path: &str, flags: u32, perm: u32) -> KResult<Arc<OpenFile>> {
+    let inode = match vfs::lookup(path) {
+        Ok(inode) => {
+            if flags & O_CREAT != 0 && flags & O_EXCL != 0 {
+                return Err(Errno::EEXIST);
+            }
+            inode
+        }
+        Err(Errno::ENOENT) if flags & O_CREAT != 0 => {
+            let (parent, name) = vfs::lookup_parent(path)?;
+            parent.create(&name, FileType::Regular, perm & 0o7777)?
+        }
+        Err(e) => return Err(e),
+    };
+    let meta = inode.metadata();
+    if flags & O_DIRECTORY != 0 && !meta.is_dir() {
+        return Err(Errno::ENOTDIR);
+    }
+    if meta.is_dir() && flags & O_ACCMODE != O_RDONLY {
+        return Err(Errno::EISDIR);
+    }
+    if flags & O_TRUNC != 0 && meta.kind == FileType::Regular && flags & O_ACCMODE != O_RDONLY {
+        inode.truncate(0)?;
+    }
+    OpenFile::new(inode, flags & !(O_CREAT | O_EXCL | O_TRUNC | O_CLOEXEC), String::from(path))
 }
 
-pub fn touch(path: &str) -> Result<(), FsError> {
-    with(|fs| fs.touch(path))
+pub fn stat(path: &str) -> KResult<Metadata> {
+    Ok(vfs::lookup(path)?.metadata())
 }
 
-pub fn write(path: &str, data: &[u8], append: bool) -> Result<(), FsError> {
-    with(|fs| fs.write(path, data, append))
+pub fn mkdir(path: &str, perm: u32) -> KResult<()> {
+    let (parent, name) = vfs::lookup_parent(path)?;
+    parent.create(&name, FileType::Directory, perm & 0o7777).map(|_| ())
 }
 
-pub fn read(path: &str) -> Result<Vec<u8>, FsError> {
-    with(|fs| fs.read(path))
+/// Creates `path` and any missing parent directories.
+pub fn mkdir_all(path: &str) -> KResult<()> {
+    let mut cur = String::new();
+    for comp in path.split('/').filter(|c| !c.is_empty()) {
+        cur.push('/');
+        cur.push_str(comp);
+        match mkdir(&cur, 0o755) {
+            Ok(()) | Err(Errno::EEXIST) => {}
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(())
 }
 
-pub fn list(path: &str) -> Result<Vec<DirEntry>, FsError> {
-    with(|fs| fs.list(path))
+/// Removes a non-directory.
+pub fn unlink(path: &str) -> KResult<()> {
+    let (parent, name) = vfs::lookup_parent(path)?;
+    if parent.lookup(&name)?.metadata().is_dir() {
+        return Err(Errno::EISDIR);
+    }
+    parent.unlink(&name)
 }
 
-pub fn remove(path: &str, recursive: bool) -> Result<(), FsError> {
-    with(|fs| fs.remove(path, recursive))
+/// Removes an empty directory.
+pub fn rmdir(path: &str) -> KResult<()> {
+    if vfs::is_mount_point(path) {
+        return Err(Errno::EBUSY);
+    }
+    let (parent, name) = vfs::lookup_parent(path)?;
+    let node = parent.lookup(&name)?;
+    if !node.metadata().is_dir() {
+        return Err(Errno::ENOTDIR);
+    }
+    if !node.readdir()?.is_empty() {
+        return Err(Errno::ENOTEMPTY);
+    }
+    parent.unlink(&name)
 }
 
-pub fn chdir(path: &str) -> Result<(), FsError> {
-    with(|fs| fs.chdir(path))
+pub fn rename(old: &str, new: &str) -> KResult<()> {
+    if new.starts_with(old) && new.as_bytes().get(old.len()) == Some(&b'/') {
+        return Err(Errno::EINVAL);
+    }
+    let (old_parent, old_name) = vfs::lookup_parent(old)?;
+    let (new_parent, new_name) = vfs::lookup_parent(new)?;
+    old_parent.rename(&old_name, &new_parent, &new_name)
 }
 
-pub fn cwd() -> String {
-    with(|fs| fs.cwd())
+/// Reads a whole file (kernel convenience).
+pub fn read_file(path: &str) -> KResult<Vec<u8>> {
+    let inode = vfs::lookup(path)?;
+    let mut out = Vec::new();
+    let mut buf = [0u8; 4096];
+    loop {
+        let n = inode.read_at(out.len() as u64, &mut buf)?;
+        if n == 0 {
+            return Ok(out);
+        }
+        out.extend_from_slice(&buf[..n]);
+    }
 }
 
-pub const TESTS: &[crate::ktest::Test] = ktests![tests::write_read, tests::directories];
+/// Creates or replaces a file (kernel convenience).
+pub fn write_file(path: &str, data: &[u8]) -> KResult<()> {
+    let f = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0o644)?;
+    f.write(data).map(|_| ())
+}
+
+pub const TESTS: &[crate::ktest::Test] = ktests![
+    tests::files,
+    tests::directories,
+    tests::rename,
+    tests::paths,
+    tests::pipes,
+    tests::devices,
+    tests::procfs,
+    tests::getdents,
+];
 
 mod tests {
     use super::*;
 
-    pub fn write_read() {
-        write("/tmp/t", b"hello", false).unwrap();
-        write("/tmp/t", b" world", true).unwrap();
-        assert_eq!(read("/tmp/t").unwrap(), b"hello world");
-        remove("/tmp/t", false).unwrap();
-        assert_eq!(read("/tmp/t"), Err(FsError::NotFound));
+    pub fn files() {
+        write_file("/tmp/t", b"hello").unwrap();
+        let f = open("/tmp/t", O_WRONLY | O_APPEND, 0).unwrap();
+        f.write(b" world").unwrap();
+        assert_eq!(read_file("/tmp/t").unwrap(), b"hello world");
+        let f = open("/tmp/t", O_RDONLY, 0).unwrap();
+        assert_eq!(f.seek(6, SEEK_SET).unwrap(), 6);
+        let mut buf = [0u8; 16];
+        assert_eq!(f.read(&mut buf).unwrap(), 5);
+        assert_eq!(&buf[..5], b"world");
+        assert_eq!(f.write(b"x"), Err(Errno::EBADF));
+        assert_eq!(open("/tmp/t", O_CREAT | O_EXCL | O_WRONLY, 0o644).err(), Some(Errno::EEXIST));
+        unlink("/tmp/t").unwrap();
+        assert_eq!(stat("/tmp/t").err(), Some(Errno::ENOENT));
     }
 
     pub fn directories() {
-        mkdir("/tmp/d").unwrap();
-        touch("/tmp/d/f").unwrap();
-        assert_eq!(remove("/tmp/d", false), Err(FsError::NotEmpty));
-        remove("/tmp/d", true).unwrap();
+        mkdir("/tmp/d", 0o755).unwrap();
+        write_file("/tmp/d/f", b"").unwrap();
+        assert_eq!(rmdir("/tmp/d"), Err(Errno::ENOTEMPTY));
+        assert_eq!(unlink("/tmp/d"), Err(Errno::EISDIR));
+        assert_eq!(open("/tmp/d/f/x", O_RDONLY, 0).err(), Some(Errno::ENOTDIR));
+        unlink("/tmp/d/f").unwrap();
+        rmdir("/tmp/d").unwrap();
+        assert_eq!(rmdir("/proc"), Err(Errno::EBUSY));
+    }
+
+    pub fn rename() {
+        mkdir_all("/tmp/a/b").unwrap();
+        write_file("/tmp/a/b/f", b"data").unwrap();
+        super::rename("/tmp/a/b/f", "/tmp/a/g").unwrap();
+        assert_eq!(read_file("/tmp/a/g").unwrap(), b"data");
+        assert_eq!(super::rename("/tmp/a", "/tmp/a/b/c"), Err(Errno::EINVAL));
+        assert_eq!(super::rename("/tmp/a/g", "/etc/g"), Err(Errno::EXDEV));
+        unlink("/tmp/a/g").unwrap();
+        rmdir("/tmp/a/b").unwrap();
+        rmdir("/tmp/a").unwrap();
+    }
+
+    pub fn paths() {
+        assert_eq!(vfs::normalize("/usr/bin", "../lib/./x").unwrap(), "/usr/lib/x");
+        assert_eq!(vfs::normalize("/", "../../..").unwrap(), "/");
+        assert_eq!(vfs::normalize("/a", "/b//c/").unwrap(), "/b/c");
+        assert_eq!(vfs::normalize("/", ""), Err(Errno::ENOENT));
+    }
+
+    pub fn pipes() {
+        let (r, w) = pipe::create().unwrap();
+        let writer = crate::task::spawn_kernel("writer", move || {
+            for i in 0..100u8 {
+                w.write(&[i; 1000]).unwrap();
+            }
+            0
+        });
+        let mut total = 0usize;
+        let mut buf = [0u8; 777];
+        loop {
+            let n = r.read(&mut buf).unwrap();
+            if n == 0 {
+                break;
+            }
+            total += n;
+        }
+        crate::task::join(writer);
+        assert_eq!(total, 100_000);
+    }
+
+    pub fn devices() {
+        let f = open("/dev/zero", O_RDONLY, 0).unwrap();
+        let mut buf = [1u8; 64];
+        assert_eq!(f.read(&mut buf).unwrap(), 64);
+        assert!(buf.iter().all(|&b| b == 0));
+        let n = open("/dev/null", O_RDWR, 0).unwrap();
+        assert_eq!(n.write(b"gone").unwrap(), 4);
+        assert_eq!(n.read(&mut buf).unwrap(), 0);
+        assert_eq!(stat("/dev/console").unwrap().kind, FileType::CharDevice);
+    }
+
+    pub fn procfs() {
+        let up = read_file("/proc/uptime").unwrap();
+        assert!(core::str::from_utf8(&up).unwrap().contains('.'));
+        let mounts = String::from_utf8(read_file("/proc/mounts").unwrap()).unwrap();
+        assert!(mounts.contains("devfs /dev devfs"));
+        assert!(stat("/proc/1").unwrap().is_dir());
+    }
+
+    pub fn getdents() {
+        mkdir_all("/tmp/ls").unwrap();
+        for name in ["a", "bb", "ccc"] {
+            write_file(&alloc::format!("/tmp/ls/{}", name), b"").unwrap();
+        }
+        let dir = open("/tmp/ls", O_RDONLY | O_DIRECTORY, 0).unwrap();
+        let mut names = Vec::new();
+        let mut buf = [0u8; 48]; // small buffer: forces several calls
+        loop {
+            let n = dir.getdents(&mut buf).unwrap();
+            if n == 0 {
+                break;
+            }
+            for d in decode_dirents(&buf[..n]) {
+                names.push(String::from_utf8(d.name.to_vec()).unwrap());
+            }
+        }
+        assert_eq!(names, [".", "..", "a", "bb", "ccc"]);
+        for name in ["a", "bb", "ccc"] {
+            unlink(&alloc::format!("/tmp/ls/{}", name)).unwrap();
+        }
+        rmdir("/tmp/ls").unwrap();
     }
 }

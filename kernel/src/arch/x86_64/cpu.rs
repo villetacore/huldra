@@ -69,3 +69,57 @@ pub fn rdtsc() -> u64 {
     unsafe { asm!("rdtsc", out("eax") lo, out("edx") hi, options(nomem, nostack, preserves_flags)) }
     (hi as u64) << 32 | lo as u64
 }
+
+/// Text for /proc/cpuinfo.
+pub fn cpuinfo() -> alloc::string::String {
+    use alloc::string::String;
+    use core::fmt::Write;
+    let regs = |leaf: u32| unsafe { __cpuid(leaf) };
+    let mut vendor = [0u8; 12];
+    let v = regs(0);
+    for (i, r) in [v.ebx, v.edx, v.ecx].iter().enumerate() {
+        vendor[i * 4..i * 4 + 4].copy_from_slice(&r.to_le_bytes());
+    }
+    let mut brand = [0u8; 48];
+    if regs(0x8000_0000).eax >= 0x8000_0004 {
+        for (i, leaf) in (0x8000_0002..=0x8000_0004).enumerate() {
+            let r = regs(leaf);
+            for (j, x) in [r.eax, r.ebx, r.ecx, r.edx].iter().enumerate() {
+                brand[i * 16 + j * 4..i * 16 + j * 4 + 4].copy_from_slice(&x.to_le_bytes());
+            }
+        }
+    }
+    let f = regs(1);
+    let mut flags = String::new();
+    let features = [
+        (f.edx, 0, "fpu"),
+        (f.edx, 4, "tsc"),
+        (f.edx, 5, "msr"),
+        (f.edx, 6, "pae"),
+        (f.edx, 9, "apic"),
+        (f.edx, 13, "pge"),
+        (f.edx, 25, "sse"),
+        (f.edx, 26, "sse2"),
+        (f.ecx, 0, "sse3"),
+        (f.ecx, 21, "x2apic"),
+        (f.ecx, 31, "hypervisor"),
+    ];
+    for (reg, bit, name) in features {
+        if reg & (1 << bit) != 0 {
+            flags.push_str(name);
+            flags.push(' ');
+        }
+    }
+    if has_nx() {
+        flags.push_str("nx");
+    }
+    let mut s = String::new();
+    let _ = writeln!(s, "processor\t: 0");
+    let _ = writeln!(s, "vendor_id\t: {}", core::str::from_utf8(&vendor).unwrap_or("?"));
+    let _ = writeln!(s, "cpu family\t: {}", (f.eax >> 8) & 0xF);
+    let _ = writeln!(s, "model\t\t: {}", (f.eax >> 4) & 0xF);
+    let _ = writeln!(s, "model name\t: {}", core::str::from_utf8(&brand).unwrap_or("?").trim_matches(|c| c == '\0' || c == ' '));
+    let _ = writeln!(s, "stepping\t: {}", f.eax & 0xF);
+    let _ = writeln!(s, "flags\t\t: {}", flags.trim_end());
+    s
+}

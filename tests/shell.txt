@@ -2,10 +2,15 @@
 # "> cmd" sends a command, "< text" expects text in its output, "! text" forbids it.
 > uname -a
 < Huldra
+> cat /etc/os-release
+< PRETTY_NAME="Huldra
 > echo hello > /tmp/greeting
 > cat /tmp/greeting
 < hello
-> ls /etc
-< hostname
+> ls /dev
+< console
+< null
+> cat /proc/mounts
+< devfs /dev devfs
 > cat /nonexistent
 < No such file or directory

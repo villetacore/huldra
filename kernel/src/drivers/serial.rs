@@ -1,17 +1,6 @@
 //! 16550 UART on COM1 (polled).
 
 use crate::arch::port::{inb, outb};
-use crate::sync::SpinLock;
-
-const RX_SIZE: usize = 256;
-
-struct RxBuffer {
-    data: [u8; RX_SIZE],
-    head: usize,
-    tail: usize,
-}
-
-static RX: SpinLock<RxBuffer> = SpinLock::new(RxBuffer { data: [0; RX_SIZE], head: 0, tail: 0 });
 
 const COM1: u16 = 0x3F8;
 const LINE_STATUS: u16 = COM1 + 5;
@@ -47,30 +36,11 @@ pub fn write_str(s: &str) {
     }
 }
 
-/// IRQ4 handler: drains the UART into the receive buffer.
+/// IRQ4 handler: passes received bytes to the terminal.
 pub fn handle_irq() {
-    let mut rx = RX.lock();
     while let Some(b) = poll() {
-        let next = (rx.head + 1) % RX_SIZE;
-        if next != rx.tail {
-            let h = rx.head;
-            rx.data[h] = b;
-            rx.head = next;
-        }
+        super::tty::input(b);
     }
-    drop(rx);
-    super::input_ready();
-}
-
-pub fn read_char() -> Option<u8> {
-    let mut rx = RX.lock();
-    if rx.head == rx.tail {
-        drop(rx);
-        return poll();
-    }
-    let b = rx.data[rx.tail];
-    rx.tail = (rx.tail + 1) % RX_SIZE;
-    Some(b)
 }
 
 fn poll() -> Option<u8> {

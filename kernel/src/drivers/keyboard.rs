@@ -67,7 +67,7 @@ pub fn handle_irq() {
         0x1D => kbd.ctrl = !released,
         0x3A if !released => kbd.caps = !kbd.caps,
         _ if released => {}
-        0x1C if extended => kbd.push(b'\n'), // keypad Enter
+        0x1C if extended => kbd.push(b'\r'), // keypad Enter
         _ if extended => {}                  // arrows etc. are not supported yet
         _ => {
             let Some(&base) = (if kbd.shift { &SHIFTED } else { &NORMAL }).get(code as usize) else {
@@ -86,10 +86,10 @@ pub fn handle_irq() {
             kbd.push(c);
         }
     }
+    let pending: alloc::vec::Vec<u8> = core::iter::from_fn(|| kbd.pop()).collect();
     drop(kbd);
-    super::input_ready();
+    for c in pending {
+        super::tty::input(c);
+    }
 }
 
-pub fn read_char() -> Option<u8> {
-    KEYBOARD.lock().pop()
-}

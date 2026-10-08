@@ -1,0 +1,2 @@
+# <device>  <mount point>  <type>
+/dev/hda    /mnt           ext2

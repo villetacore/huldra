@@ -1,0 +1,6 @@
+[package]
+name = "huldra-ext2"
+description = "ext2 file system: reader, writer and mkfs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true

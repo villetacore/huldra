@@ -3,6 +3,7 @@
 //! Builds the kernel and user space for the bare-metal target, packs the
 //! initrd and disk image, runs QEMU and drives automated tests.
 
+mod disk;
 mod image;
 mod qemu;
 
@@ -37,6 +38,7 @@ commands:
   run          build and boot in QEMU (serial on this terminal)
   test         host unit tests + in-kernel tests + scripted shell session
   iso          build a GRUB ISO (needs grub-mkrescue, e.g. in WSL)
+  fsck         create a fresh disk image and check it with e2fsck
 
 options:
   --release    optimized build
@@ -72,6 +74,12 @@ fn main() -> ExitCode {
         "run" => build(&options).and_then(|a| qemu::run(&a, &options)),
         "test" => test(&options),
         "iso" => iso(&options),
+        "fsck" => {
+            let img = target_dir().join("fsck-check.img");
+            disk::create_image(&img, &root().join("diskfs"))
+                .and_then(|_| disk::fsck(&img))
+                .and_then(|ran| if ran { Ok(()) } else { Err("e2fsck not available".into()) })
+        }
         "help" | "--help" | "-h" => {
             print!("{USAGE}");
             Ok(())
@@ -163,8 +171,14 @@ pub fn build(options: &Options) -> Result<Artifacts> {
     let initrd = target_dir().join("initrd.cpio");
     image::write_initrd(&files, &initrd)?;
 
+    // The disk keeps its contents between runs; delete it to start over.
+    let disk_img = target_dir().join("disk.img");
+    if !disk_img.exists() {
+        disk::create_image(&disk_img, &root().join("diskfs"))?;
+    }
+
     cargo(&["build", "-p", "huldra-kernel", "--target", TARGET], options)?;
-    Ok(Artifacts { kernel: out.join("huldra"), initrd: Some(initrd), disk: None })
+    Ok(Artifacts { kernel: out.join("huldra"), initrd: Some(initrd), disk: Some(disk_img) })
 }
 
 fn test(options: &Options) -> Result {
@@ -179,11 +193,24 @@ fn test(options: &Options) -> Result {
         cargo(&args, options)?;
     }
 
-    let artifacts = build(options)?;
+    let mut artifacts = build(options)?;
+    let test_disk = target_dir().join("test-disk.img");
+    disk::create_image(&test_disk, &root().join("diskfs"))?;
+    artifacts.disk = Some(test_disk.clone());
+
     println!("==> in-kernel tests");
     qemu::kernel_tests(&artifacts)?;
     println!("==> scripted shell session");
     qemu::shell_session(&artifacts, &root().join("tests").join("shell.txt"))?;
+
+    println!("==> checking the disk written by the guest");
+    let note = disk::read_file(&test_disk, "/data/note")?;
+    if note != b"persistent\n" {
+        return Err(format!("unexpected /data/note on disk: {:?}", String::from_utf8_lossy(&note)));
+    }
+    if !disk::fsck(&test_disk)? {
+        println!("(e2fsck not available, skipped)");
+    }
     println!("all tests passed");
     Ok(())
 }

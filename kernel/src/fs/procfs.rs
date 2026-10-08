@@ -39,7 +39,7 @@ impl Inode for ProcFile {
     }
 }
 
-const STATIC_FILES: &[&str] = &["cpuinfo", "interrupts", "kmsg", "meminfo", "mounts", "uptime", "version"];
+const STATIC_FILES: &[&str] = &["cpuinfo", "interrupts", "kmsg", "meminfo", "mounts", "pci", "uptime", "version"];
 const PID_FILES: &[&str] = &["cmdline", "stat", "status"];
 
 fn static_file(name: &str) -> Option<String> {
@@ -72,6 +72,7 @@ fn static_file(name: &str) -> Option<String> {
         "kmsg" => String::from_utf8_lossy(&crate::klog::snapshot()).into_owned(),
         "cpuinfo" => crate::arch::cpu::cpuinfo(),
         "interrupts" => crate::arch::irq::interrupts_text(),
+        "pci" => crate::drivers::pci::listing(),
         _ => return None,
     })
 }

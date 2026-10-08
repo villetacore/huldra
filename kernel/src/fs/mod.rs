@@ -6,6 +6,7 @@
 //! (all paths absolute and normalized, see [`vfs::normalize`]).
 
 pub mod devfs;
+pub mod ext2;
 pub mod file;
 pub mod initrd;
 pub mod pipe;
@@ -45,6 +46,7 @@ pub fn sync_all() {
             kwarn!("sync of {} failed: {}", m.source, e);
         }
     }
+    crate::drivers::block::sync_all();
 }
 
 /// Mounts a file system of type `fstype` (the `mount(2)` back end).
@@ -59,8 +61,12 @@ pub fn mount_by_type(fstype: &str, source: &str, target: &str, _flags: u64) -> K
 }
 
 /// Mounts a disk-based file system (provided by block device drivers).
-pub fn mount_block_fs(_fstype: &str, _source: &str, _target: &str) -> KResult<()> {
-    Err(Errno::ENODEV)
+pub fn mount_block_fs(fstype: &str, source: &str, target: &str) -> KResult<()> {
+    if fstype != "ext2" {
+        return Err(Errno::ENODEV);
+    }
+    let disk = crate::drivers::block::disk_for_path(source)?;
+    vfs::mount(target, ext2::mount(disk)?, source)
 }
 
 /// Opens (and possibly creates) the file at `path`.

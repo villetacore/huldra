@@ -1,4 +1,7 @@
+pub mod ata;
+pub mod block;
 pub mod keyboard;
+pub mod pci;
 pub mod rtc;
 pub mod serial;
 pub mod tty;
@@ -8,4 +11,6 @@ pub mod vga;
 pub fn init() {
     crate::arch::irq::register(1, "keyboard", keyboard::handle_irq);
     crate::arch::irq::register(4, "serial", serial::handle_irq);
+    pci::scan();
+    ata::init();
 }

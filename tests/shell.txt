@@ -31,5 +31,20 @@
 < Huldra huldra
 > echo $?
 < 0
+> cat /mnt/README
+< ext2 file system
+> /mnt/scripts/hello.sh world
+< Hello from an ext2 disk, world
+> mkdir /mnt/data && echo persistent > /mnt/data/note && cat /mnt/data/note
+< persistent
+> cp /bin/ls /mnt/data/ls && /mnt/data/ls /mnt/data
+< note
+> yes | head -n 3
+< y
+> lspci
+< IDE controller
+> cat /proc/interrupts
+< IO-APIC
+> sync
 > utest
 < utest: 20 passed, 0 failed

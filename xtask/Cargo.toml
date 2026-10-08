@@ -7,3 +7,4 @@ publish = false
 
 [dependencies]
 huldra-cpio = { path = "../libs/cpio" }
+huldra-ext2 = { path = "../libs/ext2" }

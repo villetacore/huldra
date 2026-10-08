@@ -2,9 +2,14 @@
 #
 # Entered in 32-bit protected mode with paging disabled, either by a
 # Multiboot2 loader (GRUB: EAX = magic, EBX = info) or through the PVH
-# entry point (QEMU -kernel: EBX = hvm_start_info). Identity-maps the
-# first 4 GiB with 2 MiB pages, enables long mode and calls
-# kernel_main(magic: u32, info: u32).
+# entry point (QEMU -kernel: EBX = hvm_start_info).
+#
+# Boot page tables map the first 4 GiB three times:
+#   identity            (PML4[0])    - so this code keeps running
+#   direct map          (PML4[256])  - PHYS_OFFSET + phys, 0..4 GiB
+#   kernel image        (PML4[511])  - KERNEL_VMA + phys, 0..1 GiB
+# The kernel replaces them with its own tables early in kernel_main.
+
 
 # ---------------------------------------------------------------- Multiboot2
 .section .multiboot2, "a", @progbits
@@ -31,24 +36,24 @@ mb2_header_end:
     .balign 4
 
 # ---------------------------------------------------------------- 32-bit entry
-.section .text.boot, "ax", @progbits
+.section .boot.text, "ax", @progbits
 .code32
 .global _start
 _start:
     cli
     cld
     mov ebp, eax                    # boot magic
-    mov esi, ebx                    # boot info pointer
+    mov esi, ebx                    # boot info (physical)
 
-    # Zero .bss (page tables and the boot stack live there).
-    mov edi, offset __bss_start
-    mov ecx, offset __bss_end
+    # Zero the low boot .bss (page tables, early stack).
+    mov edi, offset __boot_bss_start
+    mov ecx, offset __boot_bss_end
     sub ecx, edi
     shr ecx, 2
     xor eax, eax
     rep stosd
 
-    mov esp, offset boot_stack_top
+    mov esp, offset boot_stack32_top
 
     # Long mode supported?
     mov eax, 0x80000000
@@ -60,23 +65,28 @@ _start:
     test edx, 0x20000000
     jz .Lno_long_mode
 
-    # PML4[0] -> PDPT
-    mov eax, offset boot_pdpt
+    # PML4 -> PDPTs
+    mov eax, offset boot_pdpt_low
     or eax, 3
-    mov dword ptr [boot_pml4], eax
+    mov dword ptr [boot_pml4], eax              # identity
+    mov dword ptr [boot_pml4 + 256 * 8], eax    # direct map
+    mov eax, offset boot_pdpt_high
+    or eax, 3
+    mov dword ptr [boot_pml4 + 511 * 8], eax    # kernel image
 
-    # PDPT[0..4] -> four page directories (4 x 1 GiB)
+    # Low PDPT: four page directories covering 0..4 GiB
     mov eax, offset boot_pd
     or eax, 3
-    mov dword ptr [boot_pdpt], eax
+    mov dword ptr [boot_pdpt_low], eax
+    mov dword ptr [boot_pdpt_high + 510 * 8], eax   # -2 GiB -> 0..1 GiB
     add eax, 0x1000
-    mov dword ptr [boot_pdpt + 8], eax
+    mov dword ptr [boot_pdpt_low + 8], eax
     add eax, 0x1000
-    mov dword ptr [boot_pdpt + 16], eax
+    mov dword ptr [boot_pdpt_low + 16], eax
     add eax, 0x1000
-    mov dword ptr [boot_pdpt + 24], eax
+    mov dword ptr [boot_pdpt_low + 24], eax
 
-    # 2048 x 2 MiB huge pages: present | writable | huge
+    # 2048 x 2 MiB pages: present | writable | huge
     mov edi, offset boot_pd
     xor ecx, ecx
 .Lmap_pd:
@@ -96,18 +106,25 @@ _start:
     or eax, 0x20                    # CR4.PAE
     mov cr4, eax
 
+    mov eax, 0x80000001
+    cpuid
+    mov edi, edx                    # extended features
     mov ecx, 0xC0000080             # IA32_EFER
     rdmsr
     or eax, 0x100                   # EFER.LME
+    test edi, 0x100000              # NX supported?
+    jz .Lno_nx
+    or eax, 0x800                   # EFER.NXE
+.Lno_nx:
     wrmsr
 
     mov eax, cr0
-    or eax, 0x80000001              # CR0.PG | CR0.PE
+    or eax, 0x80010001              # CR0.PG | CR0.WP | CR0.PE
     mov cr0, eax
 
     lgdt [boot_gdt_ptr]
     push 0x08
-    mov eax, offset long_mode_entry
+    mov eax, offset long_mode_low
     push eax
     retf
 
@@ -118,29 +135,13 @@ _start:
     hlt
     jmp .Lhalt32
 
-# ---------------------------------------------------------------- 64-bit entry
 .code64
-long_mode_entry:
-    mov ax, 0x10
-    mov ds, ax
-    mov es, ax
-    mov ss, ax
-    xor eax, eax
-    mov fs, ax
-    mov gs, ax
+long_mode_low:
+    movabs rax, offset long_mode_high
+    jmp rax
 
-    lea rsp, [rip + boot_stack_top]
-    mov edi, ebp                    # arg0: magic (zero-extended)
-    mov esi, esi                    # arg1: info  (zero-extended)
-    xor ebp, ebp
-    call kernel_main
-.Lhalt64:
-    cli
-    hlt
-    jmp .Lhalt64
-
-# ---------------------------------------------------------------- data
-.section .rodata.boot, "a", @progbits
+# ---------------------------------------------------------------- boot data
+.section .boot.data, "aw", @progbits
 .balign 8
 boot_gdt:
     .quad 0
@@ -151,11 +152,48 @@ boot_gdt_ptr:
     .short boot_gdt_end - boot_gdt - 1
     .long boot_gdt
 
-.section .bss.boot, "aw", @nobits
+.section .boot.bss, "aw", @nobits
 .balign 4096
-boot_pml4:  .skip 4096
-boot_pdpt:  .skip 4096
-boot_pd:    .skip 4096 * 4
+boot_pml4:      .skip 4096
+boot_pdpt_low:  .skip 4096
+boot_pdpt_high: .skip 4096
+boot_pd:        .skip 4096 * 4
+                .skip 256
+boot_stack32_top:
+
+# ---------------------------------------------------------------- higher half
+.section .text
+.code64
+long_mode_high:
+    mov ax, 0x10
+    mov ds, ax
+    mov es, ax
+    mov ss, ax
+    xor eax, eax
+    mov fs, ax
+    mov gs, ax
+
+    # Zero .bss (the boot stack lives there, nothing is on it yet).
+    lea rdi, [rip + __bss_start]
+    lea rcx, [rip + __bss_end]
+    sub rcx, rdi
+    shr rcx, 3
+    xor eax, eax
+    rep stosq
+
+    lea rsp, [rip + boot_stack_top]
+    mov edi, ebp                    # arg0: magic (zero-extended)
+    mov esi, esi                    # arg1: info  (physical, zero-extended)
+    xor ebp, ebp
+    call kernel_main
+.Lhalt64:
+    cli
+    hlt
+    jmp .Lhalt64
+
+.section .bss
+.balign 4096
+.global boot_stack_bottom
 boot_stack_bottom:
     .skip 65536
 .global boot_stack_top

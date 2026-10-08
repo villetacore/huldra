@@ -1,9 +1,9 @@
 //! Built-in kernel shell (`ksh`), the stand-in for /sbin/init until
 //! user mode exists. Reads from the PS/2 keyboard and the serial port.
 
-use crate::arch::{self, pit};
-use crate::drivers::{keyboard, serial, vga::Color};
-use crate::{bootinfo, console, fs, mm, syscall};
+use crate::arch;
+use crate::drivers::{keyboard, serial};
+use crate::{bootinfo, console, fs, mm, syscall, time};
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -59,14 +59,7 @@ fn hostname() -> String {
 }
 
 fn prompt() {
-    console::set_color(Color::LightGreen, Color::Black);
-    print!("root@{}", hostname());
-    console::reset_color();
-    print!(":");
-    console::set_color(Color::LightBlue, Color::Black);
-    print!("{}", fs::cwd());
-    console::reset_color();
-    print!("# ");
+    print!("[92mroot@{}[0m:[94m{}[0m# ", hostname(), fs::cwd());
 }
 
 fn read_char() -> u8 {
@@ -88,7 +81,7 @@ fn read_line(line: &mut String) {
             }
             0x08 | 0x7F => {
                 if line.pop().is_some() {
-                    console::backspace();
+                    print!(" ");
                 }
             }
             0x03 => {
@@ -111,9 +104,7 @@ fn read_line(line: &mut String) {
 }
 
 fn error(msg: &str) {
-    console::set_color(Color::LightRed, Color::Black);
-    println!("{}", msg);
-    console::reset_color();
+    println!("[91m{}[0m", msg);
 }
 
 fn execute(line: &str) {
@@ -222,61 +213,42 @@ fn uname(args: &[&str], out: &mut Out) {
 }
 
 fn uptime(out: &mut Out) {
-    let secs = pit::uptime_ms() / 1000;
+    let secs = time::uptime_ms() / 1000;
     out!(
         out,
         "up {}:{:02}:{:02} ({} ticks at {} Hz)",
         secs / 3600,
         secs / 60 % 60,
         secs % 60,
-        pit::ticks(),
-        pit::HZ
+        time::ticks(),
+        time::HZ
     );
 }
 
 fn free(out: &mut Out) {
-    let (heap_used, heap_total) = mm::heap::stats();
-    let (frames_used, frames_total) = mm::frame::stats();
-    let kib = mm::PAGE_SIZE / 1024;
+    let heap = mm::heap::stats();
+    let (free, total) = mm::frame::stats();
+    let kib = (mm::PAGE_SIZE / 1024) as usize;
     out!(out, "{:<8}{:>12}{:>12}{:>12}", "", "total", "used", "free");
-    out!(
-        out,
-        "{:<8}{:>9} KiB{:>9} KiB{:>9} KiB",
-        "Mem:",
-        frames_total * kib,
-        frames_used * kib,
-        (frames_total - frames_used) * kib
-    );
-    out!(
-        out,
-        "{:<8}{:>9} KiB{:>9} KiB{:>9} KiB",
-        "Heap:",
-        heap_total / 1024,
-        heap_used / 1024,
-        (heap_total - heap_used) / 1024
-    );
+    out!(out, "{:<8}{:>9} KiB{:>9} KiB{:>9} KiB", "Mem:", total * kib, (total - free) * kib, free * kib);
+    out!(out, "{:<8}{:>9} KiB{:>9} KiB", "Heap:", (heap.slab_pages_bytes + heap.large_bytes) / 1024, heap.allocated / 1024);
 }
 
 fn boot_info(out: &mut Out) {
-    let (kstart, kend) = mm::frame::kernel_range();
-    bootinfo::with(|b| {
-        out!(out, "protocol:   {}", b.protocol);
-        out!(out, "bootloader: {}", b.bootloader.as_deref().unwrap_or("-"));
-        out!(out, "cmdline:    {}", b.cmdline.as_deref().unwrap_or("-"));
-        out!(out, "kernel:     {:#x}..{:#x} ({} KiB)", kstart, kend, (kend - kstart) / 1024);
-        out!(out, "page table: {:#x}", arch::read_cr3());
-        out!(out, "memory map:");
-        for r in &b.memory {
-            out!(
-                out,
-                "  {:#012x}..{:#012x} {:>10} KiB  {}",
-                r.base,
-                r.base + r.len,
-                r.len / 1024,
-                r.kind_name()
-            );
-        }
-    });
+    let k = mm::kernel_layout();
+    let b = bootinfo::get();
+    out!(out, "protocol:   {}", b.protocol);
+    out!(out, "bootloader: {}", if b.bootloader.is_empty() { "-" } else { b.bootloader.as_str() });
+    out!(out, "cmdline:    {}", b.cmdline.as_str());
+    out!(out, "kernel:     {:#x}..{:#x} ({} KiB)", k.start, k.end, (k.end - k.start) / 1024);
+    out!(out, "page table: {:#x}", arch::cpu::read_cr3());
+    for m in b.modules.iter() {
+        out!(out, "module:     {:#x}..{:#x} {}", m.start, m.end, m.cmdline.as_str());
+    }
+    out!(out, "memory map:");
+    for r in b.memory.iter() {
+        out!(out, "  {:#012x}..{:#012x} {:>10} KiB  {}", r.base, r.base + r.len, r.len / 1024, r.kind_name());
+    }
 }
 
 fn cpuinfo(out: &mut Out) {

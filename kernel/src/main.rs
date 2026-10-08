@@ -8,6 +8,8 @@ extern crate alloc;
 #[macro_use]
 mod console;
 #[macro_use]
+mod klog;
+#[macro_use]
 mod ktest;
 
 mod arch;
@@ -18,67 +20,52 @@ mod mm;
 mod shell;
 mod sync;
 mod syscall;
+mod time;
+mod util;
 
 use core::panic::PanicInfo;
-use drivers::vga::Color;
 
 pub const NAME: &str = "Huldra";
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Called from boot.S in 64-bit mode with the loader's magic and info pointer.
+/// Called from boot.S in 64-bit mode with the loader's magic and the
+/// physical address of its information structure.
 #[no_mangle]
 pub extern "C" fn kernel_main(magic: u32, info: u32) -> ! {
     drivers::serial::init();
     console::clear();
-    console::set_color(Color::LightCyan, Color::Black);
-    println!("{} {} (x86_64)", NAME, VERSION);
-    console::reset_color();
+    println!("\x1b[96m{} {} (x86_64)\x1b[0m", NAME, VERSION);
 
-    mm::heap::init();
-    let boot = unsafe { bootinfo::parse(magic, info as usize) };
-    log_ok(format_args!("booted via {}", boot.protocol));
+    let boot = bootinfo::store(unsafe { bootinfo::parse(magic, info as u64) });
+    kinfo!("booted via {}, cmdline: '{}'", boot.protocol, boot.cmdline.as_str());
 
     arch::init();
-    log_ok(format_args!("GDT/TSS, IDT, PIC, PIT at {} Hz", arch::pit::HZ));
-
-    mm::frame::init(&boot.memory);
-    let (_, frames) = mm::frame::stats();
-    log_ok(format_args!(
-        "physical memory: {} MiB usable, heap {} MiB",
-        frames * mm::PAGE_SIZE / (1024 * 1024),
-        mm::heap::HEAP_SIZE / (1024 * 1024)
-    ));
-    bootinfo::store(boot);
+    mm::frame::init(boot);
+    mm::vmm::init(boot);
+    mm::frame::add_high_memory(boot);
+    let (free, _) = mm::frame::stats();
+    let k = mm::kernel_layout();
+    kinfo!(
+        "memory: {} MiB free, kernel image {} KiB at {:#x}",
+        free * 4096 / (1024 * 1024),
+        (k.end - k.start) / 1024,
+        k.start
+    );
 
     fs::init();
-    log_ok(format_args!("tmpfs mounted on /"));
-
     arch::enable_interrupts();
-    log_ok(format_args!("interrupts enabled"));
 
-    if bootinfo::with(|b| b.cmdline.as_deref().is_some_and(|c| c.split_whitespace().any(|w| w == "ktest"))) == Some(true) {
+    if boot.has_flag("ktest") {
         ktest::run_all();
     }
-
     shell::run()
-}
-
-fn log_ok(args: core::fmt::Arguments) {
-    print!("[");
-    console::set_color(Color::LightGreen, Color::Black);
-    print!(" ok ");
-    console::reset_color();
-    println!("] {}", args);
 }
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     arch::disable_interrupts();
     unsafe { console::force_unlock() };
-    console::set_color(Color::White, Color::Red);
-    print!("KERNEL PANIC");
-    console::set_color(Color::LightRed, Color::Black);
-    println!(" {}", info);
+    println!("\x1b[97;41mKERNEL PANIC\x1b[0;91m {}\x1b[0m", info);
     if ktest::is_running() {
         ktest::exit_qemu(false);
     }

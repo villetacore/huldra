@@ -1,7 +1,8 @@
-//! Kernel console: VGA text screen mirrored to the COM1 serial port.
+//! Kernel console: the VGA text screen mirrored to the COM1 serial port.
+//! Text may contain ANSI escapes; both outputs understand them.
 
 use crate::drivers::serial;
-use crate::drivers::vga::{Color, Vga};
+use crate::drivers::vga::Vga;
 use crate::sync::SpinLock;
 use core::fmt::{self, Write};
 
@@ -30,34 +31,21 @@ pub fn _print(args: fmt::Arguments) {
     vga.update_cursor();
 }
 
-pub fn clear() {
-    VGA.lock().clear();
-    serial::write_str("\x1b[2J\x1b[H");
-}
-
-pub fn set_color(fg: Color, bg: Color) {
-    VGA.lock().set_color(fg, bg);
-    if fg == Color::LightGray && bg == Color::Black {
-        serial::write_str("\x1b[0m");
-    } else {
-        // "\x1b[NNm"
-        let code = fg.ansi();
-        for b in [0x1b, b'[', b'0' + code / 10, b'0' + code % 10, b'm'] {
-            serial::write_byte(b);
+/// Writes raw bytes (e.g. from a user process); invalid UTF-8 is replaced.
+pub fn write_bytes(bytes: &[u8]) {
+    let mut vga = VGA.lock();
+    let mut sink = Sink(&mut vga);
+    for chunk in bytes.utf8_chunks() {
+        let _ = sink.write_str(chunk.valid());
+        if !chunk.invalid().is_empty() {
+            let _ = sink.write_str("\u{FFFD}");
         }
     }
-}
-
-pub fn reset_color() {
-    set_color(Color::LightGray, Color::Black);
-}
-
-/// Erases the character before the cursor (line editing).
-pub fn backspace() {
-    let mut vga = VGA.lock();
-    vga.backspace();
     vga.update_cursor();
-    serial::write_str("\x08 \x08");
+}
+
+pub fn clear() {
+    _print(format_args!("\x1b[2J\x1b[H"));
 }
 
 /// Releases the console lock unconditionally. Only for panic/fatal paths.

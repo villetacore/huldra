@@ -1,0 +1,6 @@
+[package]
+name = "huldra-buddy"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Binary buddy allocator for physical page frames"

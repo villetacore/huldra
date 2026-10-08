@@ -10,3 +10,8 @@ name = "huldra"
 path = "src/main.rs"
 test = false
 bench = false
+
+[dependencies]
+huldra-abi = { path = "../libs/abi" }
+huldra-buddy = { path = "../libs/buddy" }
+huldra-kalloc = { path = "../libs/kalloc" }

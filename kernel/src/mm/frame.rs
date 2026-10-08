@@ -1,108 +1,142 @@
-//! Physical page frame allocator.
+//! Physical page frame allocator (buddy system, see `huldra-buddy`).
 //!
-//! Hands out 4 KiB frames from usable RAM above the kernel image (and
-//! below 4 GiB, which is identity-mapped). Freed frames go to an
-//! intrusive free list stored inside the frames themselves.
+//! The per-frame metadata array is carved out of the first usable region
+//! large enough to hold it. Reserved: everything below the end of the kernel
+//! image, boot modules (initrd) and the metadata array itself.
 
-use super::{align_down, align_up, PAGE_SIZE};
-use crate::bootinfo::MemRegion;
+use super::{align_down, align_up, kernel_phys_end, phys_to_virt, PAGE_SIZE};
+use crate::bootinfo::BootInfo;
 use crate::sync::SpinLock;
-use core::ptr::addr_of;
+use core::mem::size_of;
+use huldra_buddy::{BuddyAllocator, PageMeta};
 
-const MAX_REGIONS: usize = 32;
-const IDENTITY_MAPPED_LIMIT: u64 = 4 << 30;
+/// Memory the boot page tables can reach (direct map of 0..4 GiB).
+const EARLY_LIMIT: u64 = 4 << 30;
 
-extern "C" {
-    static __kernel_start: u8;
-    static __kernel_end: u8;
+static BUDDY: SpinLock<Option<BuddyAllocator<'static>>> = SpinLock::new(None);
+
+fn with<R>(f: impl FnOnce(&mut BuddyAllocator<'static>) -> R) -> R {
+    f(BUDDY.lock().as_mut().expect("frame allocator not initialized"))
 }
 
-pub fn kernel_range() -> (u64, u64) {
-    (addr_of!(__kernel_start) as u64, addr_of!(__kernel_end) as u64)
-}
-
-pub struct FrameAllocator {
-    regions: [(u64, u64); MAX_REGIONS],
-    count: usize,
-    current: usize,
-    next: u64,
-    free_list: u64,
-    total: u64,
-    used: u64,
-}
-
-impl FrameAllocator {
-    const fn new() -> Self {
-        FrameAllocator {
-            regions: [(0, 0); MAX_REGIONS],
-            count: 0,
-            current: 0,
-            next: 0,
-            free_list: 0,
-            total: 0,
-            used: 0,
+/// Calls `f(start, end)` for the parts of `[start, end)` not covered by `holes`.
+fn for_each_gap(start: u64, end: u64, holes: &[(u64, u64)], mut f: impl FnMut(u64, u64)) {
+    let mut sorted = [(0u64, 0u64); 16];
+    let n = holes.len().min(16);
+    sorted[..n].copy_from_slice(&holes[..n]);
+    sorted[..n].sort_unstable();
+    let mut cur = start;
+    for &(hs, he) in &sorted[..n] {
+        if he <= cur || hs >= end {
+            continue;
         }
+        if hs > cur {
+            f(cur, hs);
+        }
+        cur = cur.max(he);
+    }
+    if cur < end {
+        f(cur, end);
+    }
+}
+
+pub fn init(boot: &BootInfo) {
+    let max_pfn = boot
+        .memory
+        .iter()
+        .filter(|r| r.is_usable())
+        .map(|r| (r.base + r.len) / PAGE_SIZE)
+        .max()
+        .unwrap_or(0) as usize;
+    let meta_bytes = align_up((max_pfn * size_of::<PageMeta>()) as u64, PAGE_SIZE);
+
+    let mut holes = [(0u64, 0u64); 16];
+    let mut nholes = 0;
+    holes[nholes] = (0, kernel_phys_end());
+    nholes += 1;
+    for m in boot.modules.iter() {
+        holes[nholes] = (align_down(m.start, PAGE_SIZE), align_up(m.end, PAGE_SIZE));
+        nholes += 1;
     }
 
-    fn alloc(&mut self) -> Option<u64> {
-        if self.free_list != 0 {
-            let frame = self.free_list;
-            self.free_list = unsafe { (frame as *const u64).read() };
-            self.used += 1;
-            return Some(frame);
-        }
-        while self.current < self.count {
-            let (start, end) = self.regions[self.current];
-            self.next = self.next.max(start);
-            if self.next + PAGE_SIZE <= end {
-                let frame = self.next;
-                self.next += PAGE_SIZE;
-                self.used += 1;
-                return Some(frame);
+    // Place the metadata array in the first gap that fits (below 4 GiB).
+    let mut meta_at = None;
+    for r in boot.memory.iter().filter(|r| r.is_usable()) {
+        let end = (r.base + r.len).min(EARLY_LIMIT);
+        for_each_gap(align_up(r.base, PAGE_SIZE), align_down(end, PAGE_SIZE), &holes[..nholes], |s, e| {
+            if meta_at.is_none() && e - s >= meta_bytes {
+                meta_at = Some(s);
             }
-            self.current += 1;
+        });
+    }
+    let meta_at = meta_at.expect("no room for the page frame metadata");
+    holes[nholes] = (meta_at, meta_at + meta_bytes);
+    nholes += 1;
+
+    let meta = unsafe { core::slice::from_raw_parts_mut(phys_to_virt(meta_at) as *mut PageMeta, max_pfn) };
+    let mut buddy = BuddyAllocator::new(meta);
+    for r in boot.memory.iter().filter(|r| r.is_usable()) {
+        let end = (r.base + r.len).min(EARLY_LIMIT);
+        if r.base >= end {
+            continue;
         }
-        None
+        for_each_gap(align_up(r.base, PAGE_SIZE), align_down(end, PAGE_SIZE), &holes[..nholes], |s, e| {
+            buddy.add_range((s / PAGE_SIZE) as usize, (e / PAGE_SIZE) as usize)
+        });
     }
-
-    unsafe fn free(&mut self, frame: u64) {
-        (frame as *mut u64).write(self.free_list);
-        self.free_list = frame;
-        self.used -= 1;
-    }
+    *BUDDY.lock() = Some(buddy);
 }
 
-static FRAMES: SpinLock<FrameAllocator> = SpinLock::new(FrameAllocator::new());
-
-pub fn init(memory: &[MemRegion]) {
-    let floor = align_up(kernel_range().1, PAGE_SIZE);
-    let mut fa = FRAMES.lock();
-    for r in memory.iter().filter(|r| r.is_usable()) {
-        let start = align_up(r.base.max(floor), PAGE_SIZE);
-        let end = align_down((r.base + r.len).min(IDENTITY_MAPPED_LIMIT), PAGE_SIZE);
-        if end > start && fa.count < MAX_REGIONS {
-            let i = fa.count;
-            fa.regions[i] = (start, end);
-            fa.count += 1;
-            fa.total += (end - start) / PAGE_SIZE;
+/// Adds usable memory above 4 GiB, once the full direct map is active.
+pub fn add_high_memory(boot: &BootInfo) {
+    with(|b| {
+        for r in boot.memory.iter().filter(|r| r.is_usable()) {
+            let start = align_up(r.base.max(EARLY_LIMIT), PAGE_SIZE);
+            let end = align_down(r.base + r.len, PAGE_SIZE);
+            if end > start {
+                b.add_range((start / PAGE_SIZE) as usize, (end / PAGE_SIZE) as usize);
+            }
         }
+    });
+}
+
+/// Returns a no-longer-needed reserved range (e.g. the initrd) to the allocator.
+pub fn release_range(start: u64, end: u64) {
+    let (s, e) = (align_up(start, PAGE_SIZE), align_down(end, PAGE_SIZE));
+    if e > s {
+        with(|b| b.add_range((s / PAGE_SIZE) as usize, (e / PAGE_SIZE) as usize));
     }
 }
 
-#[allow(dead_code)]
-pub fn alloc_frame() -> Option<u64> {
-    FRAMES.lock().alloc()
+/// Allocates 2^order contiguous frames; returns the physical address.
+pub fn alloc_pages(order: usize) -> Option<u64> {
+    with(|b| b.alloc(order)).map(|pfn| pfn as u64 * PAGE_SIZE)
 }
 
-/// # Safety
-/// `frame` must come from [`alloc_frame`] and must not be used afterwards.
-#[allow(dead_code)]
-pub unsafe fn free_frame(frame: u64) {
-    FRAMES.lock().free(frame)
+pub fn free_pages(phys: u64, order: usize) {
+    with(|b| b.free((phys / PAGE_SIZE) as usize, order))
 }
 
-/// Returns (used, total) frames.
-pub fn stats() -> (u64, u64) {
-    let fa = FRAMES.lock();
-    (fa.used, fa.total)
+pub fn alloc() -> Option<u64> {
+    alloc_pages(0)
+}
+
+pub fn alloc_zeroed() -> Option<u64> {
+    let f = alloc()?;
+    unsafe { core::ptr::write_bytes(phys_to_virt(f) as *mut u8, 0, PAGE_SIZE as usize) };
+    Some(f)
+}
+
+pub fn free(phys: u64) {
+    free_pages(phys, 0)
+}
+
+/// Returns (free, managed) frame counts.
+pub fn stats() -> (usize, usize) {
+    with(|b| (b.free_frames(), b.managed_frames()))
+}
+
+/// Free block counts per order.
+pub fn free_blocks() -> [usize; huldra_buddy::MAX_ORDER + 1] {
+    with(|b| b.free_blocks())
 }

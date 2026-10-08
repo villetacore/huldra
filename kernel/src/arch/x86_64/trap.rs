@@ -1,8 +1,9 @@
 //! Common trap entry: CPU exceptions, hardware IRQs and system calls.
 
-use super::{halt_forever, pic, pit, read_cr2};
+use super::cpu::read_cr2;
+use super::{halt_forever, pic};
 use crate::console;
-use crate::drivers::{keyboard, vga::Color};
+use crate::drivers::keyboard;
 
 /// Register state saved by `isr_common` (see trap.S), lowest address first.
 #[repr(C)]
@@ -76,7 +77,7 @@ extern "C" fn trap_dispatch(frame: &mut TrapFrame) {
         32..=47 => {
             let irq = (frame.vector - pic::IRQ_BASE as u64) as u8;
             match irq {
-                0 => pit::tick(),
+                0 => crate::time::tick(),
                 1 => keyboard::handle_irq(),
                 _ => {}
             }
@@ -90,22 +91,21 @@ extern "C" fn trap_dispatch(frame: &mut TrapFrame) {
 fn fatal_exception(f: &TrapFrame) -> ! {
     // The faulting code may have held the console lock.
     unsafe { console::force_unlock() };
-    console::set_color(Color::White, Color::Red);
-    println!(
-        "\n*** CPU EXCEPTION {}: {} ***",
-        f.vector, EXCEPTIONS[f.vector as usize]
-    );
-    console::set_color(Color::LightRed, Color::Black);
+    println!("\n\x1b[97;41m*** CPU EXCEPTION {}: {} ***\x1b[0;91m", f.vector, EXCEPTIONS[f.vector as usize]);
     println!("error code: {:#x}", f.error);
     if f.vector == 14 {
         let e = f.error;
+        let addr = read_cr2();
         println!(
             "fault address: {:#018x} ({} {} in {} mode)",
-            read_cr2(),
+            addr,
             if e & 1 != 0 { "protection violation" } else { "page not present" },
             if e & 2 != 0 { "on write" } else { "on read" },
             if e & 4 != 0 { "user" } else { "kernel" },
         );
+        if crate::mm::kstack::KernelStack::is_guard_address(addr) {
+            println!("kernel stack overflow");
+        }
     }
     println!("rip={:#018x} cs={:#x} rflags={:#x}", f.rip, f.cs, f.rflags);
     println!("rsp={:#018x} ss={:#x}", f.rsp, f.ss);
@@ -114,6 +114,9 @@ fn fatal_exception(f: &TrapFrame) -> ! {
     println!("rbp={:#018x} r8 ={:#018x} r9 ={:#018x}", f.rbp, f.r8, f.r9);
     println!("r10={:#018x} r11={:#018x} r12={:#018x}", f.r10, f.r11, f.r12);
     println!("r13={:#018x} r14={:#018x} r15={:#018x}", f.r13, f.r14, f.r15);
-    println!("System halted.");
+    println!("System halted.\x1b[0m");
+    if crate::ktest::is_running() {
+        crate::ktest::exit_qemu(false);
+    }
     halt_forever()
 }

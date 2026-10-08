@@ -1,0 +1,6 @@
+[package]
+name = "huldra-kalloc"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Slab-style size-class allocator on top of a page source"

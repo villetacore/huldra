@@ -52,6 +52,13 @@ name = "huldra-net"
 version = "0.2.0"
 
 [[package]]
+name = "huldra-pkg"
+version = "0.2.0"
+dependencies = [
+ "huldra-archive",
+]
+
+[[package]]
 name = "huldra-user"
 version = "0.2.0"
 dependencies = [
@@ -60,6 +67,7 @@ dependencies = [
  "huldra-hcc",
  "huldra-kalloc",
  "huldra-net",
+ "huldra-pkg",
 ]
 
 [[package]]
@@ -69,4 +77,5 @@ dependencies = [
  "huldra-cpio",
  "huldra-ext2",
  "huldra-hcc",
+ "huldra-pkg",
 ]

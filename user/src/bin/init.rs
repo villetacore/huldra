@@ -59,7 +59,7 @@ fn main() -> i32 {
     // init ignores ^C: it must never die.
     let _ = signal::ignore(signal::SIGINT);
     let _ = signal::ignore(signal::SIGQUIT);
-    env::set_var("PATH", "/bin:/sbin");
+    env::set_var("PATH", "/bin:/sbin:/usr/bin:/usr/local/bin");
     env::set_var("HOME", "/root");
     env::set_var("SHELL", "/bin/sh");
     env::set_var("TERM", "linux");

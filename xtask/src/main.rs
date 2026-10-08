@@ -7,6 +7,7 @@ mod cc;
 mod disk;
 mod image;
 mod qemu;
+mod repo;
 
 use std::env;
 use std::fs;
@@ -44,6 +45,8 @@ commands:
                compile C on the host with hcc (the system C compiler)
   cc-test      compile tests/cc/*.c with hcc and compare with gcc
   session FILE run one scripted shell session (see tests/*.txt)
+  repo         build the package repository (packages/ -> target/repo)
+  serve        build and serve the repository on port 8800 for pkg(1)
 
 options:
   --release    optimized build
@@ -85,7 +88,12 @@ fn main() -> ExitCode {
                 println!("disk:   {}", d.display());
             }
         }),
-        "run" => build(&options).and_then(|a| qemu::run(&a, &options)),
+        "run" => build(&options).and_then(|a| {
+            start_repo_server();
+            qemu::run(&a, &options)
+        }),
+        "repo" => repo::build().map(drop),
+        "serve" => repo::serve(),
         "test" => test(&options),
         "cc-test" => cc::test(),
         "session" => session(&args[1..]),
@@ -233,6 +241,7 @@ fn disk_files(system: &[image::ImageFile]) -> Result<Vec<image::ImageFile>> {
         })
         .collect();
     files.extend(disk::tree("usr/share/huldra", &root().join("diskfs"))?);
+    files.push(image::ImageFile { dest: "usr/share/huldra/docs/README.md".into(), source: root().join("README.md"), mode: 0o644 });
     if let Some(dir) = build_linux_programs() {
         files.extend(disk::tree("opt/linux-tests", &dir)?);
     }
@@ -311,7 +320,7 @@ pub fn build(options: &Options) -> Result<Artifacts> {
 fn build_with(options: &Options, user_disk: bool) -> Result<Artifacts> {
     let out = target_dir().join(TARGET).join(profile_dir(options));
     let system = system_files()?;
-    let initrd = target_dir().join("initrd.cpio");
+    let initrd = target_dir().join(if user_disk { "initrd.cpio" } else { "test-initrd.cpio" });
     image::write_initrd(&system, &initrd)?;
 
     // The disk is the root file system and keeps user data between runs:
@@ -358,10 +367,23 @@ fn build_with(options: &Options, user_disk: bool) -> Result<Artifacts> {
 fn session(args: &[String]) -> Result {
     let script = args.first().ok_or("usage: cargo xtask session FILE")?;
     let mut artifacts = build_with(&Options::default(), false)?;
+    start_repo_server();
     let disk = target_dir().join("session-disk.img");
     disk::create_image(&disk, &disk_files(&system_files()?)?)?;
     artifacts.disk = Some(disk);
     qemu::shell_session(&artifacts, Path::new(script))
+}
+
+/// Builds the package repository and serves it while QEMU runs.
+fn start_repo_server() {
+    match repo::build() {
+        Ok(dir) => {
+            if !repo::serve_background(dir, repo::PORT) {
+                println!("(port {} busy: another xtask is serving packages)", repo::PORT);
+            }
+        }
+        Err(e) => println!("(package repository not built: {e})"),
+    }
 }
 
 fn test(options: &Options) -> Result {
@@ -380,6 +402,7 @@ fn test(options: &Options) -> Result {
     cc::test()?;
 
     let mut artifacts = build_with(options, false)?;
+    start_repo_server();
     let test_disk = target_dir().join("test-disk.img");
     disk::create_image(&test_disk, &disk_files(&system_files()?)?)?;
     artifacts.disk = Some(test_disk.clone());
@@ -391,6 +414,9 @@ fn test(options: &Options) -> Result {
 
     println!("==> reboot: data on the root disk persists");
     qemu::shell_session(&artifacts, &root().join("tests").join("persist.txt"))?;
+
+    println!("==> package manager");
+    qemu::shell_session(&artifacts, &root().join("tests").join("pkg.txt"))?;
 
     if target_dir().join("linux-bin").join("hello").exists() {
         println!("==> Linux binaries");

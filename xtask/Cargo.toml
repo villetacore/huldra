@@ -9,3 +9,4 @@ publish = false
 huldra-cpio = { path = "../libs/cpio" }
 huldra-ext2 = { path = "../libs/ext2" }
 huldra-hcc = { path = "../libs/hcc" }
+huldra-pkg = { path = "../libs/pkg" }

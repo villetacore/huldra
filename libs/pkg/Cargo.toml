@@ -1,0 +1,9 @@
+[package]
+name = "huldra-pkg"
+description = "Package format, repository index and dependency resolution for pkg"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+huldra-archive = { path = "../archive" }

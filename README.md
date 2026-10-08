@@ -1,22 +1,31 @@
 # Huldra
 
 Небольшая Unix-подобная операционная система для x86_64 на Rust: монолитное
-модульное ядро, системные вызовы с номерами Linux, user space со своим shell
-и утилитами, ext2 на IDE-диске. Собирается на **stable** Rust, без внешних
-зависимостей от crates.io.
+модульное ядро с системными вызовами Linux, корневая ФС ext2 на диске,
+свой shell, текстовый редактор, файловый менеджер, компилятор Си, сеть TCP/IP
+и пакетный менеджер с репозиторием. Запускает и статические Linux-программы
+(glibc). Собирается на **stable** Rust, без зависимостей с crates.io.
 
 ```text
-Huldra 0.2.0 (init: pid 1)
-root@huldra:~# ls /mnt/scripts | grep sh && /mnt/scripts/hello.sh world
-hello.sh
-Hello from an ext2 disk, world
-Huldra huldra 0.2.0 #1 SMP x86_64
-root@huldra:~# ps
-  PID  PPID  PGID S     TIME     VSZ  CMD
-    0     0     0 R     0:00       0  [idle]
-    1     0     1 S     0:00    8292  /sbin/init
-    2     1     2 S     0:00    8296  -sh
-    7     2     7 R     0:00    8284  ps
+root@huldra:~# pkg update && pkg install fortune cowsay
+fetching http://10.0.2.2:8800/INDEX
+  6 packages
+also installing dependencies: fortune-data
+installed fortune-data 1.0-1
+installed fortune 1.2-1
+installed cowsay 3.0-1
+root@huldra:~# fortune | cowsay
+ ________________________________________
+/ Talk is cheap. Show me the code.       \
+\ -- Linus Torvalds                      /
+ ----------------------------------------
+        \   ^__^
+         \  (oo)\_______
+            (__)\       )\/\
+                ||----w |
+                ||     ||
+root@huldra:~# echo 'int main(void){ printf("%d\n", 6*7); }' > a.c && cc -run a.c
+42
 ```
 
 ## Быстрый старт
@@ -27,117 +36,142 @@ root@huldra:~# ps
 cargo xtask run
 ```
 
-Собирает ядро, user space, initrd и диск и запускает QEMU; консоль доступна
-и в окне QEMU, и в терминале (serial). Другие команды:
+Собирает ядро, программы, initrd и диск, поднимает репозиторий пакетов и
+запускает QEMU с сетевой картой e1000. Консоль — в окне QEMU и в терминале.
 
 | команда | что делает |
 |---|---|
-| `cargo xtask build [--release]` | ядро + программы + `target/initrd.cpio` + `target/disk.img` |
-| `cargo xtask run [--release] [--headless] [--append "debug"]` | запуск в QEMU |
-| `cargo xtask test` | все тесты (см. ниже) |
-| `cargo xtask fsck` | создать образ ext2 и проверить его настоящим `e2fsck` |
-| `cargo xtask iso` | загрузочный ISO с GRUB (нужен `grub-mkrescue`, например в WSL) |
-| `cargo xtask run --gdb` | ждать отладчик на `localhost:1234` |
+| `cargo xtask build [--release]` | ядро, программы, `target/initrd.cpio`, `target/disk.img` |
+| `cargo xtask run [--release] [--headless] [--append "..."]` | запуск в QEMU (+ репозиторий на порту 8800, проброс `localhost:8080` → гость:80) |
+| `cargo xtask test` | все тесты (см. ниже); не трогает `disk.img`, можно запускать параллельно с `run` |
+| `cargo xtask session FILE` | прогнать один сценарий (`tests/*.txt`) на чистом диске |
+| `cargo xtask cc file.c -o prog` | скомпилировать Си на хосте компилятором hcc |
+| `cargo xtask cc-test` | `tests/cc/*.c`: hcc против gcc, вывод должен совпасть |
+| `cargo xtask repo` / `serve` | собрать репозиторий пакетов / раздавать его по HTTP |
+| `cargo xtask fsck` | создать образ ext2 и проверить настоящим `e2fsck` |
+| `cargo xtask iso` | загрузочный ISO с GRUB (нужен `grub-mkrescue`) |
 
-Параметры ядра (`--append`): `init=/bin/sh`, `debug`, `quiet`, `ktest`.
-Диск `target/disk.img` сохраняет содержимое между запусками; удалите его,
-чтобы пересоздать из `diskfs/`.
+Параметры ядра (`--append`): `root=/dev/hda` (по умолчанию в `run`),
+`init=/bin/sh`, `ip=dhcp|none|10.0.2.15/24,10.0.2.2,10.0.2.3`, `debug`,
+`quiet`, `ktest`. Диск `target/disk.img` — корневая ФС, данные сохраняются
+между запусками; при сборке обновляются только `/bin`, `/sbin` и `/usr`.
 
-## Что внутри
+## Что умеет система
+
+**Работа в консоли.** `sh` — настоящий язык: `if/while/until/for`,
+функции, `$(...)`, `$((...))`, glob, история, Tab-дополнение, job control
+(`&`, `jobs`, `wait`). Терминал VT100 (цвета, курсор, alt-клавиши).
+
+**Программы.** `edit` (редактор с подсветкой синтаксиса, поиском, undo),
+`less`, `fm` (двухпанельный файловый менеджер в духе Midnight Commander),
+`top`, `cc`, `pkg`; сеть: `ifconfig ping host wget nc httpd`; утилиты:
+`ls cat cp mv rm mkdir find grep sed sort uniq cut tr wc head tail diff cmp
+xargs tar base64 sha256sum du df tree stat hexdump date cal ps kill free
+dmesg mount …` (около 80 команд).
+
+**Компилятор Си (`cc`, hcc).** Пишется на Rust, компилирует всю программу
+сразу прямо в статический ELF — без ассемблера, объектных файлов и
+линковщика. Препроцессор (макросы с аргументами, `#`/`##`, `#if`),
+C99/C11 и расширения GNU (statement expressions, `case 1 ... 5`, `?:`,
+`typeof`), структуры и объединения, указатели на функции,
+varargs, `float`/`double` на SSE, `setjmp`/`longjmp`. Своя libc на Си
+(`/usr/lib/hcc/libc.c`, заголовки в `/usr/include`): stdio, printf/scanf,
+malloc, строки, math, time, каталоги, процессы, сигналы, сокеты и DNS.
+Примеры: `/usr/share/huldra/examples/*.c`. `cc -run file.c` компилирует
+и сразу запускает.
+
+**Сеть.** Драйвер Intel e1000, собственный стек TCP/IP (ARP, IPv4, ICMP,
+UDP, TCP с повторной передачей и управлением потоком, loopback, DHCP),
+BSD-сокеты с номерами Linux. В QEMU гость получает 10.0.2.15 по DHCP, хост
+доступен как 10.0.2.2, DNS — 10.0.2.3.
+
+**Пакеты.** `pkg update | search | info | install | remove | upgrade | list |
+files`. Пакет — tar-архив с `.PKGINFO` и файлами; репозиторий — каталог с
+`INDEX` (версии, зависимости, размер, SHA-256), раздаётся по HTTP.
+Зависимости ставятся автоматически, конфликты файлов и контрольные суммы
+проверяются, удаление учитывает зависимые пакеты. Репозитории — в
+`/etc/pkg.conf`, состояние — в `/var/lib/pkg`. Пакеты собираются из
+`packages/` (программы на Си компилируются тем же hcc): `hello`, `cowsay`,
+`fortune` (+ `fortune-data`), `2048`, `sl`.
+
+**Linux-программы.** Статически собранные бинарники Linux (glibc, `gcc
+-static`) запускаются как есть: потоки (`clone`, futex), сигналы, `fork`/
+`exec`, FPU/SSE, сокеты. Тесты в `tests/linux/`.
+
+## Устройство
 
 ### Ядро (`kernel/`)
 
-- **Загрузка**: Multiboot2 (GRUB) и PVH (`qemu -kernel`). Ядро в higher half
-  (`0xFFFFFFFF80000000`), секции отображены с правами W^X и NX.
-- **Память**: прямое отображение всей физической памяти, buddy-аллокатор
-  страниц, slab-куча, стеки ядра с guard-страницами, адресные пространства
-  процессов с VMA, подкачка по требованию (heap, стек, `mmap`).
-- **Процессы**: вытесняющий round-robin планировщик, очереди ожидания без
-  потерянных пробуждений, спящий `Mutex`, `fork`/`execve`/`exit`/`wait4`,
-  группы процессов и сессии, загрузка статических ELF, static-pie и `#!`-скриптов.
-- **Системные вызовы**: `syscall`/`sysret` (и `int 0x80`), около 70 вызовов
-  с номерами и структурами Linux x86_64. Указатели из user space проверяются
-  по VMA, плохой указатель даёт `EFAULT`, а не панику.
-- **Сигналы**: `sigaction`, `sigprocmask`, `kill`, обработчики в user space
-  через `rt_sigreturn`, `SA_RESTART`, `EINTR`; исключения CPU превращаются
-  в `SIGSEGV`/`SIGILL`/`SIGFPE`.
-- **VFS**: трейты `Inode`/`FileSystem`, точки монтирования, общие смещения
-  открытых файлов, таблицы дескрипторов, `pipe`.
-  Файловые системы: tmpfs, devfs, procfs, ext2.
-- **TTY**: канонический и raw режимы, эхо, редактирование строки, `^C` → `SIGINT`
-  группе переднего плана, `termios` через `ioctl`.
-- **Драйверы**: ACPI (MADT), локальный APIC (таймер) и I/O APIC (откат на
-  8259 PIC и PIT), PCI, ATA PIO (LBA28/48) с кэшем секторов, PS/2-клавиатура,
-  COM1, VGA с ANSI-цветами, CMOS RTC.
-- **Диагностика**: журнал ядра с уровнями (`dmesg`, `/proc/kmsg`),
-  `/proc/{meminfo,interrupts,pci,mounts,cpuinfo,<pid>/...}`.
+- **Загрузка**: Multiboot2 (GRUB) и PVH (`qemu -kernel`); ядро в higher half,
+  W^X и NX.
+- **Память**: прямое отображение физической памяти, buddy + slab, VMA и
+  подкачка по требованию, стеки ядра с guard-страницами.
+- **Процессы и потоки**: вытесняющий планировщик, очереди ожидания с
+  таймаутами, `fork`/`vfork`/`clone` (потоки, TLS, `CLONE_*`), группы потоков,
+  futex, `execve` (ELF, static-pie, `#!`), сигналы с обработчиками,
+  `alarm`, состояние FPU/SSE на задачу.
+- **Системные вызовы**: около 130 вызовов с номерами и структурами Linux
+  x86_64; неизвестные пишутся в журнал один раз.
+- **ФС**: VFS (`Inode`/`FileSystem`, монтирование, общие смещения), ext2
+  (чтение/запись, корень на диске, фоновая запись `flushd`), tmpfs, devfs,
+  procfs, pipe, `poll`.
+- **Сеть**: драйвер e1000 (DMA-кольца, прерывания), поток `netd`, сокеты как
+  файлы, `/proc/net/{if,sockets,dns}`.
+- **Драйверы**: ACPI (MADT), LAPIC/IOAPIC, PCI, ATA PIO, PS/2, COM1, VGA с
+  эмуляцией VT100, RTC.
 
-### Библиотеки (`libs/`)
-
-Части без зависимости от железа, тестируемые обычным `cargo test`:
+### Библиотеки (`libs/`) — без железа, тестируются `cargo test` на хосте
 
 | crate | назначение |
 |---|---|
-| `huldra-abi` | номера вызовов, errno, `stat`, `termios`, `sigaction` (раскладки Linux) |
-| `huldra-buddy` | buddy-аллокатор физических страниц |
-| `huldra-kalloc` | slab-аллокатор (куча ядра и user space) |
-| `huldra-elf` | разбор ELF64 |
-| `huldra-cpio` | чтение и запись cpio newc (initrd) |
-| `huldra-ext2` | ext2: чтение, запись, `mkfs` |
+| `huldra-abi` | номера вызовов, errno, структуры Linux |
+| `huldra-buddy`, `huldra-kalloc` | аллокаторы страниц и кучи |
+| `huldra-elf`, `huldra-cpio`, `huldra-ext2` | ELF, initrd, ext2 (+ mkfs) |
+| `huldra-archive` | tar и SHA-256 |
+| `huldra-hcc` | компилятор Си (лексер, препроцессор, парсер, кодогенератор, ассемблер, ELF) |
+| `huldra-net` | TCP/IP без ввода-вывода: тестируется двумя стеками на «проводе» с потерями |
+| `huldra-pkg` | формат пакетов, индекс, версии, разрешение зависимостей |
 
 ### User space (`user/`)
 
-`huldra-user` — маленькая «libc»: точка входа, системные вызовы, буферизованный
-ввод-вывод, файлы, процессы, сигналы, куча на `mmap`. Программы:
+`huldra-user` — рантайм программ на Rust (системные вызовы, буферизованный
+ввод-вывод, файлы, процессы, терминал, сокеты, DNS, HTTP-клиент).
+Программы — в `user/src/bin/`.
 
-`init`, `sh` (пайпы, `;` `&&` `||`, `&`, перенаправления `< > >> 2> 2>&1`,
-переменные, `$?`, `$1`, скрипты), `ls cat echo mkdir rm rmdir touch cp mv pwd
-uname ps kill free uptime dmesg mount umount sleep clear reboot poweroff head
-tail wc grep env true false date stat hexdump tee sync yes lspci utest`.
-
-Корневая ФС — initrd из `rootfs/` + собранные программы. `init` монтирует
-`/etc/fstab` (`/dev/hda` → `/mnt`), печатает приветствие и держит `sh`
-на консоли.
+```text
+kernel/src/   arch/ mm/ task/ proc/ syscall/ fs/ net/ drivers/
+libs/         переиспользуемые no_std-библиотеки
+user/         рантайм и программы
+rootfs/       базовая система (/etc, /usr/include, /usr/lib/hcc)
+diskfs/       документация и примеры (/usr/share/huldra)
+packages/     исходники пакетов для репозитория
+tests/        сценарии для QEMU, тесты Си и Linux-программ
+xtask/        сборка, образы, QEMU, тесты, репозиторий
+```
 
 ## Тесты
 
-`cargo xtask test` запускает:
+`cargo xtask test`:
 
-1. unit-тесты библиотек на хосте (buddy, slab, ELF, cpio, ext2, ABI);
-2. тесты внутри ядра (`ktest`): память, планировщик, VFS, пайпы, procfs;
-3. сценарий shell по serial (`tests/shell.txt`), включая `utest` — 20 тестов
-   системных вызовов из user space;
-4. проверку диска после сеанса: файл, записанный гостем на ext2, читается
-   на хосте, а образ проходит `e2fsck -fn` (через WSL на Windows).
+1. unit-тесты библиотек на хосте (в том числе TCP с потерей каждого 3-го
+   пакета, DHCP, разрешение зависимостей);
+2. `tests/cc`: программы, скомпилированные hcc и gcc, печатают одно и то же;
+3. тесты внутри ядра (`ktest`);
+4. сценарий shell (`tests/shell.txt`): язык shell, утилиты, редактор и
+   другие полноэкранные программы, сеть (DHCP, ping, httpd + wget, nc),
+   компиляция Си внутри системы, `utest` (20 тестов системных вызовов);
+5. перезагрузка: данные на диске сохраняются;
+6. пакетный менеджер против репозитория, который раздаёт xtask;
+7. настоящие Linux-программы (glibc): файлы, процессы, потоки, сокеты;
+8. проверка образа на хосте и `e2fsck -fn`.
 
-## Структура
+## Ограничения
 
-```text
-kernel/src/
-  arch/x86_64/   boot.S, entry.S, GDT/IDT, APIC, ACPI, paging, context switch
-  mm/            buddy, slab-куча, таблицы ядра, стеки ядра
-  task/          задачи, планировщик, очереди ожидания
-  proc/          адресные пространства, exec, fork/exit/wait, сигналы, uaccess
-  syscall/       системные вызовы
-  fs/            VFS, tmpfs, devfs, procfs, ext2, pipe, initrd
-  drivers/       tty, vga, serial, keyboard, rtc, pci, ata, block
-libs/            переиспользуемые no_std-библиотеки
-user/            libc-замена и программы (src/bin)
-xtask/           сборка, образы, запуск QEMU, тесты
-rootfs/          содержимое initrd
-diskfs/          содержимое ext2-диска
-```
-
-## Ограничения и дальнейшие шаги
-
-- Один процессор. Данные per-CPU и APIC уже есть, нет запуска остальных
-  ядер (AP) и блокировок, рассчитанных на SMP.
-- `fork` копирует память целиком: копирования при записи (COW) пока нет.
-- Нет символических ссылок, прав доступа и пользователей (всё от root),
-  кэша путей (dentry cache) и общих (`MAP_SHARED`) отображений файлов.
-- Job control неполный: `SIGTSTP`/`SIGSTOP` игнорируются.
-- Нет динамической линковки; совместимость со статическими бинарниками
-  musl — цель ABI, но не проверялась.
-- Загрузка через GRUB (`cargo xtask iso`) собрана, но в этой среде не
-  тестировалась; путь PVH проверяется автотестами.
-- Нет сети и USB.
+- Один процессор; нет SMP.
+- `fork` копирует память целиком (нет COW), нет `MAP_SHARED`.
+- Нет пользователей и прав доступа, символических ссылок.
+- Нет динамической линковки: Linux-программы — только статические.
+- Нет IPv6, TCP без управления перегрузкой и без переупорядочивания.
+- hcc: нет VLA, `long double` = `double`, битовые поля без упаковки,
+  код не оптимизируется.
+- Нет графики и USB.

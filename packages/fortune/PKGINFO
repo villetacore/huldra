@@ -1,0 +1,4 @@
+name = fortune
+version = 1.2-1
+description = Prints a random adage
+depends = fortune-data

@@ -73,7 +73,7 @@ fn complete(sh: &Shell, line: &str, cursor: usize) -> (usize, Vec<String>) {
                 out.push(f.clone());
             }
         }
-        for dir in env::var("PATH").unwrap_or("/bin:/sbin").split(':') {
+        for dir in env::var("PATH").unwrap_or("/bin:/sbin:/usr/bin:/usr/local/bin").split(':') {
             for e in fs::read_dir(dir).unwrap_or_default() {
                 if e.name.starts_with(word) {
                     out.push(e.name);

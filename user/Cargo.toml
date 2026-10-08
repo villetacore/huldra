@@ -16,3 +16,4 @@ huldra-kalloc = { path = "../libs/kalloc" }
 huldra-archive = { path = "../libs/archive" }
 huldra-hcc = { path = "../libs/hcc" }
 huldra-net = { path = "../libs/net" }
+huldra-pkg = { path = "../libs/pkg" }

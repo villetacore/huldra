@@ -35,7 +35,7 @@ pub fn run_init(path: &str) -> ! {
     tty.set_foreground(1);
 
     let env = alloc::vec![
-        String::from("PATH=/bin:/sbin"),
+        String::from("PATH=/bin:/sbin:/usr/bin:/usr/local/bin"),
         String::from("HOME=/root"),
         String::from("TERM=linux")
     ];

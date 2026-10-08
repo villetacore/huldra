@@ -1,0 +1,50 @@
+# Package manager against the repository served by xtask (10.0.2.2:8800).
+> until grep -q bound /proc/net/if; do sleep 0.2; done
+> pkg install hello
+< no package index
+> pkg update
+< 6 packages
+> pkg search
+< cowsay
+< fortune
+> pkg search game
+< 2048
+> pkg install fortune
+< also installing dependencies: fortune-data
+< installed fortune-data
+< installed fortune 1.2-1
+> fortune
+< --
+> pkg install cowsay hello
+< installed cowsay
+> fortune | cowsay
+< (oo)
+> hello Huldra
+< Hello, Huldra! (installed with pkg)
+> pkg list
+< fortune-data
+> pkg remove fortune-data
+< needed by: fortune
+> pkg remove fortune fortune-data
+< removed fortune-data
+> ls /usr/share
+! fortune
+> which fortune; echo status=$?
+< status=1
+> pkg info cowsay
+< Installed:   3.0-1
+> pkg files hello
+< /usr/bin/hello
+> pkg install nonexistent
+< package 'nonexistent' not found
+> pkg upgrade
+< up to date
+> pkg install 2048 sl
+< installed sl 5.0-1
+> sl
+= 2048\r
+= \e[A\e[B\e[C\e[D
+= q
+.
+> echo games over
+< games over

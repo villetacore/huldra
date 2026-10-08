@@ -7,6 +7,8 @@ extern crate alloc;
 
 #[macro_use]
 mod console;
+#[macro_use]
+mod ktest;
 
 mod arch;
 mod bootinfo;
@@ -52,7 +54,11 @@ pub extern "C" fn kernel_main(magic: u32, info: u32) -> ! {
     log_ok(format_args!("tmpfs mounted on /"));
 
     arch::enable_interrupts();
-    log_ok(format_args!("interrupts enabled, starting shell"));
+    log_ok(format_args!("interrupts enabled"));
+
+    if bootinfo::with(|b| b.cmdline.as_deref().is_some_and(|c| c.split_whitespace().any(|w| w == "ktest"))) == Some(true) {
+        ktest::run_all();
+    }
 
     shell::run()
 }
@@ -73,6 +79,9 @@ fn panic(info: &PanicInfo) -> ! {
     print!("KERNEL PANIC");
     console::set_color(Color::LightRed, Color::Black);
     println!(" {}", info);
+    if ktest::is_running() {
+        ktest::exit_qemu(false);
+    }
     println!("System halted.");
     arch::halt_forever()
 }

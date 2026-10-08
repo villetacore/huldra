@@ -1,0 +1,9 @@
+[package]
+name = "huldra-abi"
+description = "Kernel/user ABI shared by the Huldra kernel and user space (Linux x86_64 compatible)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+test = true

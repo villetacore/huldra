@@ -1,0 +1,12 @@
+[package]
+name = "huldra-kernel"
+description = "Huldra: a small Unix-like kernel written in Rust"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "huldra"
+path = "src/main.rs"
+test = false
+bench = false

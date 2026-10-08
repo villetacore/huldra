@@ -64,3 +64,24 @@ pub fn chdir(path: &str) -> Result<(), FsError> {
 pub fn cwd() -> String {
     with(|fs| fs.cwd())
 }
+
+pub const TESTS: &[crate::ktest::Test] = ktests![tests::write_read, tests::directories];
+
+mod tests {
+    use super::*;
+
+    pub fn write_read() {
+        write("/tmp/t", b"hello", false).unwrap();
+        write("/tmp/t", b" world", true).unwrap();
+        assert_eq!(read("/tmp/t").unwrap(), b"hello world");
+        remove("/tmp/t", false).unwrap();
+        assert_eq!(read("/tmp/t"), Err(FsError::NotFound));
+    }
+
+    pub fn directories() {
+        mkdir("/tmp/d").unwrap();
+        touch("/tmp/d/f").unwrap();
+        assert_eq!(remove("/tmp/d", false), Err(FsError::NotEmpty));
+        remove("/tmp/d", true).unwrap();
+    }
+}

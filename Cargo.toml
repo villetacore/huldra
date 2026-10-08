@@ -1,13 +1,15 @@
-[package]
-name = "huldra"
-version = "0.1.0"
-edition = "2021"
-description = "Huldra: a small Unix-like kernel written in Rust"
+[workspace]
+resolver = "2"
+members = ["kernel", "xtask", "libs/*"]
+# `cargo build` / `cargo test` at the root only touch host crates;
+# bare-metal crates are built by `cargo xtask`.
+default-members = ["xtask"]
 
-[[bin]]
-name = "huldra"
-test = false
-bench = false
+[workspace.package]
+version = "0.2.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/villetacore/huldra"
 
 [profile.dev]
 panic = "abort"

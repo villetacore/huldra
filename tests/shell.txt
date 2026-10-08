@@ -1,0 +1,11 @@
+# Scripted session run by `cargo xtask test`.
+# "> cmd" sends a command, "< text" expects text in its output, "! text" forbids it.
+> uname -a
+< Huldra
+> echo hello > /tmp/greeting
+> cat /tmp/greeting
+< hello
+> ls /etc
+< hostname
+> cat /nonexistent
+< No such file or directory

@@ -102,3 +102,14 @@
 < still alive
 > utest
 < utest: 20 passed, 0 failed
+> cc /usr/share/huldra/examples/hello.c -o /tmp/hello && /tmp/hello x
+< Hello from C on Huldra
+< argv[1] = x
+> cc -run /usr/share/huldra/examples/primes.c 50
+< 15 primes below 50
+> cd /tmp && cc /usr/share/huldra/examples/wc.c -o wc && ./wc /etc/hostname; cd /
+< /etc/hostname
+> echo 'int main(void) { return 6 * 7; }' > /tmp/r.c && cc -run /tmp/r.c; echo status=$?
+< status=42
+> echo 'int main(void) { return x; }' > /tmp/bad.c; cc /tmp/bad.c
+< /tmp/bad.c:1: error: 'x' undeclared

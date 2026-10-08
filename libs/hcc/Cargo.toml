@@ -1,0 +1,6 @@
+[package]
+name = "huldra-hcc"
+description = "hcc: a small C compiler producing static x86-64 ELF executables"
+version.workspace = true
+edition.workspace = true
+license.workspace = true

@@ -1,5 +1,9 @@
 //! Synchronization primitives.
 
+mod mutex;
+
+pub use mutex::{Mutex, MutexGuard};
+
 use crate::arch;
 use core::cell::UnsafeCell;
 use core::mem::MaybeUninit;

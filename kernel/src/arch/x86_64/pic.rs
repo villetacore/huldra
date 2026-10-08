@@ -29,8 +29,8 @@ pub fn init() {
         outb(SLAVE_DATA, 0x01);
         io_wait();
 
-        // Unmask timer (IRQ0) and keyboard (IRQ1) only.
-        outb(MASTER_DATA, 0xFC);
+        // Unmask timer (IRQ0), keyboard (IRQ1) and COM1 (IRQ4).
+        outb(MASTER_DATA, 0xEC);
         outb(SLAVE_DATA, 0xFF);
     }
 }

@@ -17,9 +17,11 @@ mod bootinfo;
 mod drivers;
 mod fs;
 mod mm;
+mod proc;
 mod shell;
 mod sync;
 mod syscall;
+mod task;
 mod time;
 mod util;
 
@@ -53,12 +55,16 @@ pub extern "C" fn kernel_main(magic: u32, info: u32) -> ! {
     );
 
     fs::init();
+    task::sched::init();
     arch::enable_interrupts();
 
-    if boot.has_flag("ktest") {
-        ktest::run_all();
-    }
-    shell::run()
+    let init = if boot.has_flag("ktest") {
+        task::spawn_kernel("ktest", || ktest::run_all())
+    } else {
+        task::spawn_kernel("ksh", || shell::run())
+    };
+    task::detach(&init);
+    task::sched::idle_loop()
 }
 
 #[panic_handler]

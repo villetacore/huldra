@@ -86,6 +86,8 @@ pub fn handle_irq() {
             kbd.push(c);
         }
     }
+    drop(kbd);
+    super::input_ready();
 }
 
 pub fn read_char() -> Option<u8> {

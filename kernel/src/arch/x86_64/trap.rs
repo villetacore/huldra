@@ -7,7 +7,7 @@ use crate::drivers::keyboard;
 
 /// Register state saved by `isr_common` (see trap.S), lowest address first.
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Default, Clone)]
 pub struct TrapFrame {
     pub r15: u64,
     pub r14: u64,
@@ -69,23 +69,40 @@ const EXCEPTIONS: [&str; 32] = [
     "Reserved",
 ];
 
+pub const TIMER_VECTOR: u64 = 32;
+
+impl TrapFrame {
+    pub fn from_user(&self) -> bool {
+        self.cs & 3 == 3
+    }
+}
+
 #[no_mangle]
 extern "C" fn trap_dispatch(frame: &mut TrapFrame) {
     match frame.vector {
-        3 => println!("[trap] breakpoint at {:#x}", frame.rip),
+        3 => kinfo!("breakpoint at {:#x}", frame.rip),
         0..=31 => fatal_exception(frame),
         32..=47 => {
             let irq = (frame.vector - pic::IRQ_BASE as u64) as u8;
             match irq {
-                0 => crate::time::tick(),
+                0 => {
+                    crate::time::tick();
+                    crate::task::sched::timer_tick();
+                }
                 1 => keyboard::handle_irq(),
+                4 => crate::drivers::serial::handle_irq(),
                 _ => {}
             }
             pic::eoi(irq);
         }
-        0x80 => crate::syscall::dispatch(frame),
-        v => println!("[trap] unexpected vector {}", v),
+        0x80 => {
+            super::enable_interrupts();
+            crate::syscall::dispatch(frame);
+            super::disable_interrupts();
+        }
+        v => kwarn!("unexpected interrupt vector {}", v),
     }
+    crate::task::sched::preempt_if_needed();
 }
 
 fn fatal_exception(f: &TrapFrame) -> ! {

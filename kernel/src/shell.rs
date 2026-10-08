@@ -2,7 +2,6 @@
 //! user mode exists. Reads from the PS/2 keyboard and the serial port.
 
 use crate::arch;
-use crate::drivers::{keyboard, serial};
 use crate::{bootinfo, console, fs, mm, syscall, time};
 use alloc::format;
 use alloc::string::{String, ToString};
@@ -63,12 +62,7 @@ fn prompt() {
 }
 
 fn read_char() -> u8 {
-    loop {
-        if let Some(c) = keyboard::read_char().or_else(serial::try_read) {
-            return c;
-        }
-        arch::wait_for_interrupt();
-    }
+    crate::drivers::read_char()
 }
 
 fn read_line(line: &mut String) {

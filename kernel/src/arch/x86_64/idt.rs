@@ -50,9 +50,8 @@ impl Gate {
 static mut IDT: [Gate; 256] = [Gate::EMPTY; 256];
 
 extern "C" {
-    /// Entry stubs for vectors 0..48 (exceptions and PIC IRQs), see trap.S.
-    static isr_stub_table: [u64; 48];
-    fn isr_stub_128();
+    /// Entry stubs for all 256 vectors, see entry.S.
+    static isr_stub_table: [u64; 256];
 }
 
 pub fn init() {
@@ -61,9 +60,9 @@ pub fn init() {
         let stubs = &*addr_of!(isr_stub_table);
         for (vector, &handler) in stubs.iter().enumerate() {
             let ist = if vector == 8 { DOUBLE_FAULT_IST } else { 0 };
-            idt[vector] = Gate::new(handler, ist, INTERRUPT_GATE);
+            let attributes = if vector == SYSCALL_VECTOR { USER_INTERRUPT_GATE } else { INTERRUPT_GATE };
+            idt[vector] = Gate::new(handler, ist, attributes);
         }
-        idt[SYSCALL_VECTOR] = Gate::new(isr_stub_128 as *const () as u64, 0, USER_INTERRUPT_GATE);
 
         let ptr = DescriptorTablePointer {
             limit: (size_of::<[Gate; 256]>() - 1) as u16,

@@ -1,9 +1,11 @@
 //! x86_64 architecture support.
 
+pub mod context;
 pub mod cpu;
 pub mod gdt;
 pub mod idt;
 pub mod paging;
+pub mod percpu;
 pub mod pic;
 pub mod pit;
 pub mod port;
@@ -14,12 +16,13 @@ use core::arch::{asm, global_asm};
 pub use trap::TrapFrame;
 
 global_asm!(include_str!("boot.S"), options(raw));
-global_asm!(include_str!("trap.S"), options(raw));
+global_asm!(include_str!("entry.S"), options(raw));
 
 /// Brings up descriptor tables, interrupt controller and timer.
 /// Interrupts stay disabled until [`enable_interrupts`] is called.
 pub fn init() {
     gdt::init();
+    percpu::init(); // after gdt::init, which reloads GS
     idt::init();
     pic::init();
     pit::init();

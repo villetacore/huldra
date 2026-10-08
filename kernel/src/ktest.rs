@@ -18,7 +18,7 @@ pub struct Test {
 /// Builds a test list from functions: `ktests![a, b]`.
 macro_rules! ktests {
     ($($f:path),* $(,)?) => {
-        &[$($crate::ktest::Test { name: stringify!($f), run: $f }),*]
+        &[$($crate::ktest::Test { name: concat!(module_path!(), "::", stringify!($f)), run: $f }),*]
     };
 }
 
@@ -29,7 +29,7 @@ pub fn exit_qemu(success: bool) -> ! {
 
 pub fn run_all() -> ! {
     RUNNING.store(true, Ordering::Relaxed);
-    let suites: &[&[Test]] = &[crate::mm::TESTS, crate::fs::TESTS];
+    let suites: &[&[Test]] = &[crate::mm::TESTS, crate::task::TESTS, crate::fs::TESTS];
     let total: usize = suites.iter().map(|s| s.len()).sum();
     println!("running {} kernel tests", total);
     for test in suites.iter().flat_map(|s| s.iter()) {

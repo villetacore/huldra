@@ -6,9 +6,9 @@ use crate::sync::SpinLock;
 const BUFFER_SIZE: usize = 128;
 
 #[rustfmt::skip]
-const NORMAL: [u8; 58] = *b"\0\x1b1234567890-=\x08\tqwertyuiop[]\n\0asdfghjkl;'`\0\\zxcvbnm,./\0*\0 ";
+const NORMAL: [u8; 58] = *b"\0\x1b1234567890-=\x7f\tqwertyuiop[]\r\0asdfghjkl;'`\0\\zxcvbnm,./\0*\0 ";
 #[rustfmt::skip]
-const SHIFTED: [u8; 58] = *b"\0\x1b!@#$%^&*()_+\x08\tQWERTYUIOP{}\n\0ASDFGHJKL:\"~\0|ZXCVBNM<>?\0*\0 ";
+const SHIFTED: [u8; 58] = *b"\0\x1b!@#$%^&*()_+\x7f\tQWERTYUIOP{}\r\0ASDFGHJKL:\"~\0|ZXCVBNM<>?\0*\0 ";
 
 struct Keyboard {
     shift: bool,
@@ -26,6 +26,12 @@ impl Keyboard {
         if next != self.tail {
             self.buffer[self.head] = c;
             self.head = next;
+        }
+    }
+
+    fn push_str(&mut self, s: &[u8]) {
+        for &c in s {
+            self.push(c);
         }
     }
 
@@ -68,7 +74,36 @@ pub fn handle_irq() {
         0x3A if !released => kbd.caps = !kbd.caps,
         _ if released => {}
         0x1C if extended => kbd.push(b'\r'), // keypad Enter
-        _ if extended => {}                  // arrows etc. are not supported yet
+        _ if extended => {
+            // Cursor block: the same escape sequences as a VT100/xterm.
+            let seq: &[u8] = match code {
+                0x48 => b"\x1b[A",
+                0x50 => b"\x1b[B",
+                0x4D => b"\x1b[C",
+                0x4B => b"\x1b[D",
+                0x47 => b"\x1b[H",
+                0x4F => b"\x1b[F",
+                0x49 => b"\x1b[5~",
+                0x51 => b"\x1b[6~",
+                0x52 => b"\x1b[2~",
+                0x53 => b"\x1b[3~",
+                0x35 => b"/", // keypad divide
+                _ => b"",
+            };
+            kbd.push_str(seq);
+        }
+        0x3B..=0x44 | 0x57 | 0x58 => {
+            const FKEYS: [&[u8]; 12] = [
+                b"\x1bOP", b"\x1bOQ", b"\x1bOR", b"\x1bOS", b"\x1b[15~", b"\x1b[17~", b"\x1b[18~",
+                b"\x1b[19~", b"\x1b[20~", b"\x1b[21~", b"\x1b[23~", b"\x1b[24~",
+            ];
+            let i = match code {
+                0x57 => 10,
+                0x58 => 11,
+                c => (c - 0x3B) as usize,
+            };
+            kbd.push_str(FKEYS[i]);
+        }
         _ => {
             let Some(&base) = (if kbd.shift { &SHIFTED } else { &NORMAL }).get(code as usize)
             else {

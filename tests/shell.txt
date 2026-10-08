@@ -46,5 +46,19 @@
 > cat /proc/interrupts
 < IO-APIC
 > sync
+> for i in 1 2 3; do echo n=$i; done
+< n=3
+> x=5; if [ $x -gt 3 ]; then echo big; else echo small; fi
+< big
+> i=0; while [ $i -lt 3 ]; do i=$((i + 1)); echo i$i; done
+< i3
+> greet() { echo "hello, $1"; }; greet world
+< hello, world
+> echo "files: $(ls /etc | wc -l)"; echo /etc/host*
+< /etc/hostname
+> ( cd /tmp && pwd ); pwd
+< /tmp
+> echo 'single $HOME' "double $HOME" $((6 * 7))
+< single $HOME double /root 42
 > utest
 < utest: 20 passed, 0 failed

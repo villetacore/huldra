@@ -14,6 +14,7 @@ pub mod io;
 pub mod process;
 pub mod signal;
 pub mod sys;
+pub mod term;
 pub mod time;
 
 mod heap;

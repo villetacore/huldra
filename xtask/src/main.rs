@@ -175,10 +175,13 @@ fn build_user() -> Result<Vec<image::ImageFile>> {
         .map_err(|e| e.to_string())?
         .flatten()
         .filter_map(|e| {
-            e.file_name()
-                .to_str()?
-                .strip_suffix(".rs")
-                .map(String::from)
+            let name = e.file_name().to_str()?.to_string();
+            // `foo.rs` or a `foo/main.rs` directory
+            if e.path().join("main.rs").is_file() {
+                Some(name)
+            } else {
+                name.strip_suffix(".rs").map(String::from)
+            }
         })
         .collect();
     names.sort();

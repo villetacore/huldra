@@ -12,13 +12,27 @@ impl PageSource for MmapPages {
     unsafe fn alloc_pages(&mut self, order: usize) -> *mut u8 {
         let len = PAGE_SIZE << order;
         if order == 0 {
-            return match crate::sys::mmap(0, len, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0) {
+            return match crate::sys::mmap(
+                0,
+                len,
+                PROT_READ | PROT_WRITE,
+                MAP_PRIVATE | MAP_ANONYMOUS,
+                -1,
+                0,
+            ) {
                 Ok(a) => a as *mut u8,
                 Err(_) => core::ptr::null_mut(),
             };
         }
         // Over-allocate so the block can be aligned to its size.
-        let raw = match crate::sys::mmap(0, len * 2, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0) {
+        let raw = match crate::sys::mmap(
+            0,
+            len * 2,
+            PROT_READ | PROT_WRITE,
+            MAP_PRIVATE | MAP_ANONYMOUS,
+            -1,
+            0,
+        ) {
             Ok(a) => a,
             Err(_) => return core::ptr::null_mut(),
         };

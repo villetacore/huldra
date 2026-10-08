@@ -92,7 +92,12 @@ pub struct Reader {
 
 impl Reader {
     pub fn new(fd: i32) -> Reader {
-        Reader { fd, buf: Vec::new(), pos: 0, eof: false }
+        Reader {
+            fd,
+            buf: Vec::new(),
+            pos: 0,
+            eof: false,
+        }
     }
 
     fn fill(&mut self) -> Result<bool> {

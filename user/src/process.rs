@@ -42,7 +42,9 @@ pub fn find_in_path(name: &str) -> Option<String> {
         return crate::fs::exists(name).then(|| String::from(name));
     }
     let path = crate::env::var("PATH").unwrap_or("/bin:/sbin");
-    path.split(':').map(|dir| crate::fs::join(dir, name)).find(|p| crate::fs::exists(p))
+    path.split(':')
+        .map(|dir| crate::fs::join(dir, name))
+        .find(|p| crate::fs::exists(p))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

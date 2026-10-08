@@ -14,11 +14,18 @@ fn main() -> i32 {
         .filter_map(|e| e.name.parse().ok())
         .collect();
     pids.sort_unstable();
-    println!("{:>5} {:>5} {:>5} S {:>8} {:>7}  CMD", "PID", "PPID", "PGID", "TIME", "VSZ");
+    println!(
+        "{:>5} {:>5} {:>5} S {:>8} {:>7}  CMD",
+        "PID", "PPID", "PGID", "TIME", "VSZ"
+    );
     for pid in pids {
-        let Ok(stat) = fs::read_to_string(&huldra_user::format!("/proc/{}/stat", pid)) else { continue };
+        let Ok(stat) = fs::read_to_string(&huldra_user::format!("/proc/{}/stat", pid)) else {
+            continue;
+        };
         // "pid (name) state ppid pgid sid ticks vm_bytes"
-        let (Some(open), Some(close)) = (stat.find('('), stat.rfind(')')) else { continue };
+        let (Some(open), Some(close)) = (stat.find('('), stat.rfind(')')) else {
+            continue;
+        };
         let name = &stat[open + 1..close];
         let rest: Vec<&str> = stat[close + 1..].split_whitespace().collect();
         if rest.len() < 6 {

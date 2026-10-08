@@ -34,7 +34,11 @@ pub fn run_init(path: &str) -> ! {
     tty.set_session(1);
     tty.set_foreground(1);
 
-    let env = alloc::vec![String::from("PATH=/bin:/sbin"), String::from("HOME=/root"), String::from("TERM=linux")];
+    let env = alloc::vec![
+        String::from("PATH=/bin:/sbin"),
+        String::from("HOME=/root"),
+        String::from("TERM=linux")
+    ];
     let frame = match exec::exec(path, alloc::vec![String::from(path)], env) {
         Ok(f) => f,
         Err(e) => panic!("cannot execute init program {}: {}", path, e),
@@ -47,7 +51,12 @@ pub fn run_init(path: &str) -> ! {
 
 pub fn fork(frame: &TrapFrame) -> KResult<Pid> {
     let parent = sched::current();
-    let mm: MemorySpace = parent.mm.lock().as_ref().ok_or(Errno::EINVAL)?.duplicate()?;
+    let mm: MemorySpace = parent
+        .mm
+        .lock()
+        .as_ref()
+        .ok_or(Errno::EINVAL)?
+        .duplicate()?;
 
     let mut child_frame = *frame;
     child_frame.rax = 0;
@@ -57,7 +66,9 @@ pub fn fork(frame: &TrapFrame) -> KResult<Pid> {
 
     child.cr3.store(mm.root(), Ordering::Release);
     child.set_user();
-    child.fs_base.store(parent.fs_base.load(Ordering::Relaxed), Ordering::Relaxed);
+    child
+        .fs_base
+        .store(parent.fs_base.load(Ordering::Relaxed), Ordering::Relaxed);
     *child.mm.lock() = Some(mm);
     *child.files.lock() = parent.files.lock().clone();
     {
@@ -177,7 +188,11 @@ pub fn setpgid(pid: Pid, pgid: Pid) -> KResult<()> {
 }
 
 pub fn getpgid(pid: Pid) -> KResult<Pid> {
-    let t = if pid == 0 { sched::current() } else { task::lookup(pid).ok_or(Errno::ESRCH)? };
+    let t = if pid == 0 {
+        sched::current()
+    } else {
+        task::lookup(pid).ok_or(Errno::ESRCH)?
+    };
     let pgid = t.proc.lock().pgid;
     Ok(pgid)
 }

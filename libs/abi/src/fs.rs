@@ -79,7 +79,13 @@ pub const fn dirent64_reclen(name_len: usize) -> usize {
 }
 
 /// Encodes one dirent64 record into `out`; returns the record length.
-pub fn encode_dirent64(out: &mut [u8], ino: u64, off: i64, d_type: u8, name: &[u8]) -> Option<usize> {
+pub fn encode_dirent64(
+    out: &mut [u8],
+    ino: u64,
+    off: i64,
+    d_type: u8,
+    name: &[u8],
+) -> Option<usize> {
     let reclen = dirent64_reclen(name.len());
     if out.len() < reclen {
         return None;
@@ -113,7 +119,10 @@ pub fn decode_dirents(buf: &[u8]) -> impl Iterator<Item = Dirent<'_>> {
             return None;
         }
         let name_area = &rec[DIRENT64_HEADER_SIZE..reclen];
-        let len = name_area.iter().position(|&b| b == 0).unwrap_or(name_area.len());
+        let len = name_area
+            .iter()
+            .position(|&b| b == 0)
+            .unwrap_or(name_area.len());
         pos += reclen;
         Some(Dirent {
             ino: u64::from_le_bytes(rec[0..8].try_into().unwrap()),

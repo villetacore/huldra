@@ -133,7 +133,11 @@ impl Channel {
             insw(self.io, &mut id);
             let word = |i: usize| u16::from_le_bytes([id[i * 2], id[i * 2 + 1]]) as u64;
             let lba48 = word(83) & (1 << 10) != 0;
-            let sectors = if lba48 { word(100) | word(101) << 16 | word(102) << 32 | word(103) << 48 } else { word(60) | word(61) << 16 };
+            let sectors = if lba48 {
+                word(100) | word(101) << 16 | word(102) << 32 | word(103) << 48
+            } else {
+                word(60) | word(61) << 16
+            };
             (sectors > 0).then_some((sectors, lba48))
         }
     }
@@ -213,7 +217,13 @@ pub fn init() {
             let found = channel.lock().identify(slave);
             if let Some((sectors, lba48)) = found {
                 let idx = c * 2 + slave as usize;
-                let disk = AtaDisk { name: String::from(names[idx]), channel: channel.clone(), slave, sectors, lba48 };
+                let disk = AtaDisk {
+                    name: String::from(names[idx]),
+                    channel: channel.clone(),
+                    slave,
+                    sectors,
+                    lba48,
+                };
                 block::register(Arc::new(disk), 3, (idx * 64) as u32);
             }
         }

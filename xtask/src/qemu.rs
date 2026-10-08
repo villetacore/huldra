@@ -14,7 +14,11 @@ const fn debug_exit_status(code: i32) -> i32 {
 pub const KERNEL_EXIT_SUCCESS: i32 = debug_exit_status(0x10);
 
 fn qemu_binary() -> Result<PathBuf> {
-    let exe = if cfg!(windows) { "qemu-system-x86_64.exe" } else { "qemu-system-x86_64" };
+    let exe = if cfg!(windows) {
+        "qemu-system-x86_64.exe"
+    } else {
+        "qemu-system-x86_64"
+    };
     if let Some(paths) = std::env::var_os("PATH") {
         for dir in std::env::split_paths(&paths) {
             let p = dir.join(exe);
@@ -23,7 +27,12 @@ fn qemu_binary() -> Result<PathBuf> {
             }
         }
     }
-    for dir in [r"C:\Program Files\qemu", "/usr/bin", "/usr/local/bin", "/opt/homebrew/bin"] {
+    for dir in [
+        r"C:\Program Files\qemu",
+        "/usr/bin",
+        "/usr/local/bin",
+        "/opt/homebrew/bin",
+    ] {
         let p = Path::new(dir).join(exe);
         if p.is_file() {
             return Ok(p);
@@ -34,13 +43,15 @@ fn qemu_binary() -> Result<PathBuf> {
 
 fn base_command(a: &Artifacts, cmdline: Option<&str>) -> Result<Command> {
     let mut cmd = Command::new(qemu_binary()?);
-    cmd.args(["-m", "256M", "-no-reboot", "-kernel"]).arg(&a.kernel);
+    cmd.args(["-m", "256M", "-no-reboot", "-kernel"])
+        .arg(&a.kernel);
     cmd.args(["-device", "isa-debug-exit,iobase=0xf4,iosize=0x04"]);
     if let Some(initrd) = &a.initrd {
         cmd.arg("-initrd").arg(initrd);
     }
     if let Some(disk) = &a.disk {
-        cmd.arg("-drive").arg(format!("file={},format=raw,if=ide,index=0", disk.display()));
+        cmd.arg("-drive")
+            .arg(format!("file={},format=raw,if=ide,index=0", disk.display()));
     }
     if let Some(c) = cmdline {
         cmd.args(["-append", c]);
@@ -58,7 +69,9 @@ pub fn run(a: &Artifacts, o: &Options) -> Result {
         cmd.args(["-s", "-S"]);
         println!("waiting for gdb on localhost:1234");
     }
-    let status = cmd.status().map_err(|e| format!("failed to start QEMU: {e}"))?;
+    let status = cmd
+        .status()
+        .map_err(|e| format!("failed to start QEMU: {e}"))?;
     match status.code() {
         Some(0) | Some(KERNEL_EXIT_SUCCESS) => Ok(()),
         Some(c) => Err(format!("QEMU exited with status {c}")),
@@ -87,7 +100,9 @@ pub fn kernel_tests(a: &Artifacts) -> Result {
     let mut cmd = base_command(a, Some("ktest"))?;
     cmd.args(["-display", "none", "-serial", "stdio"]);
     cmd.stdout(Stdio::piped()).stderr(Stdio::inherit());
-    let mut child = cmd.spawn().map_err(|e| format!("failed to start QEMU: {e}"))?;
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("failed to start QEMU: {e}"))?;
 
     let mut stdout = child.stdout.take().unwrap();
     let reader = std::thread::spawn(move || {
@@ -152,19 +167,27 @@ impl Console {
                 return Ok(clean);
             }
             if start.elapsed() > timeout {
-                return Err(format!("timed out waiting for prompt; output so far:\n{clean}"));
+                return Err(format!(
+                    "timed out waiting for prompt; output so far:\n{clean}"
+                ));
             }
             match self.stream.read(&mut buf) {
                 Ok(0) => return Err(format!("QEMU closed the serial port; output:\n{clean}")),
                 Ok(n) => self.buffer.push_str(&String::from_utf8_lossy(&buf[..n])),
-                Err(e) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => {}
+                Err(e)
+                    if matches!(
+                        e.kind(),
+                        std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                    ) => {}
                 Err(e) => return Err(e.to_string()),
             }
         }
     }
 
     fn send_line(&mut self, line: &str) -> Result {
-        self.stream.write_all(line.as_bytes()).map_err(|e| e.to_string())?;
+        self.stream
+            .write_all(line.as_bytes())
+            .map_err(|e| e.to_string())?;
         self.stream.write_all(b"\r").map_err(|e| e.to_string())
     }
 }
@@ -174,28 +197,42 @@ impl Console {
 /// Script format: `> command` sends a line, `< text` expects `text` in its
 /// output, `! text` expects it to be absent, `#` starts a comment.
 pub fn shell_session(a: &Artifacts, script: &Path) -> Result {
-    let script = std::fs::read_to_string(script).map_err(|e| format!("{}: {e}", script.display()))?;
+    let script =
+        std::fs::read_to_string(script).map_err(|e| format!("{}: {e}", script.display()))?;
 
-    let port = TcpListener::bind("127.0.0.1:0").and_then(|l| l.local_addr()).map_err(|e| e.to_string())?.port();
+    let port = TcpListener::bind("127.0.0.1:0")
+        .and_then(|l| l.local_addr())
+        .map_err(|e| e.to_string())?
+        .port();
     let mut cmd = base_command(a, None)?;
     cmd.args(["-display", "none"]);
-    cmd.arg("-serial").arg(format!("tcp:127.0.0.1:{port},server=on,wait=on"));
+    cmd.arg("-serial")
+        .arg(format!("tcp:127.0.0.1:{port},server=on,wait=on"));
     cmd.stdout(Stdio::null());
-    let mut child = cmd.spawn().map_err(|e| format!("failed to start QEMU: {e}"))?;
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("failed to start QEMU: {e}"))?;
 
     let start = Instant::now();
     let stream = loop {
         match TcpStream::connect(("127.0.0.1", port)) {
             Ok(s) => break s,
-            Err(_) if start.elapsed() < Duration::from_secs(10) => std::thread::sleep(Duration::from_millis(100)),
+            Err(_) if start.elapsed() < Duration::from_secs(10) => {
+                std::thread::sleep(Duration::from_millis(100))
+            }
             Err(e) => {
                 let _ = child.kill();
                 return Err(format!("cannot connect to QEMU serial: {e}"));
             }
         }
     };
-    stream.set_read_timeout(Some(Duration::from_millis(200))).ok();
-    let mut console = Console { stream, buffer: String::new() };
+    stream
+        .set_read_timeout(Some(Duration::from_millis(200)))
+        .ok();
+    let mut console = Console {
+        stream,
+        buffer: String::new(),
+    };
 
     let result = (|| -> Result {
         console.read_until_prompt(Duration::from_secs(30))?;
@@ -210,14 +247,22 @@ pub fn shell_session(a: &Artifacts, script: &Path) -> Result {
                 console.send_line(c)?;
                 let raw = console.read_until_prompt(Duration::from_secs(60))?;
                 // Drop the terminal's echo of the command line itself.
-                output = raw.split_once('\n').map_or(String::new(), |(_, rest)| rest.to_string());
+                output = raw
+                    .split_once('\n')
+                    .map_or(String::new(), |(_, rest)| rest.to_string());
             } else if let Some(t) = line.strip_prefix("< ") {
                 if !output.contains(t) {
-                    failures.push(format!("line {}: `{command}`: expected {t:?} in:\n{output}", n + 1));
+                    failures.push(format!(
+                        "line {}: `{command}`: expected {t:?} in:\n{output}",
+                        n + 1
+                    ));
                 }
             } else if let Some(t) = line.strip_prefix("! ") {
                 if output.contains(t) {
-                    failures.push(format!("line {}: `{command}`: unexpected {t:?} in:\n{output}", n + 1));
+                    failures.push(format!(
+                        "line {}: `{command}`: unexpected {t:?} in:\n{output}",
+                        n + 1
+                    ));
                 }
             }
         }

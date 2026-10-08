@@ -30,7 +30,6 @@ pub enum FileType {
     BlockDevice,
     Fifo,
     Symlink,
-    Socket,
 }
 
 impl FileType {
@@ -42,7 +41,6 @@ impl FileType {
             FileType::BlockDevice => abi::S_IFBLK,
             FileType::Fifo => abi::S_IFIFO,
             FileType::Symlink => abi::S_IFLNK,
-            FileType::Socket => abi::S_IFSOCK,
         }
     }
 
@@ -54,7 +52,6 @@ impl FileType {
             FileType::BlockDevice => abi::DT_BLK,
             FileType::Fifo => abi::DT_FIFO,
             FileType::Symlink => abi::DT_LNK,
-            FileType::Socket => abi::DT_UNKNOWN,
         }
     }
 }
@@ -108,7 +105,11 @@ impl Metadata {
             st_rdev: self.rdev,
             st_size: self.size as i64,
             st_blksize: 4096,
-            st_blocks: if self.blocks != 0 { self.blocks as i64 } else { self.size.div_ceil(512) as i64 },
+            st_blocks: if self.blocks != 0 {
+                self.blocks as i64
+            } else {
+                self.size.div_ceil(512) as i64
+            },
             st_atime: self.mtime,
             st_mtime: self.mtime,
             st_ctime: self.mtime,
@@ -135,11 +136,19 @@ pub trait Inode: Send + Sync + Any {
     fn metadata(&self) -> Metadata;
 
     fn read_at(&self, _offset: u64, _buf: &mut [u8]) -> KResult<usize> {
-        Err(if self.metadata().is_dir() { Errno::EISDIR } else { Errno::EINVAL })
+        Err(if self.metadata().is_dir() {
+            Errno::EISDIR
+        } else {
+            Errno::EINVAL
+        })
     }
 
     fn write_at(&self, _offset: u64, _buf: &[u8]) -> KResult<usize> {
-        Err(if self.metadata().is_dir() { Errno::EISDIR } else { Errno::EINVAL })
+        Err(if self.metadata().is_dir() {
+            Errno::EISDIR
+        } else {
+            Errno::EINVAL
+        })
     }
 
     fn truncate(&self, _size: u64) -> KResult<()> {
@@ -227,7 +236,13 @@ pub fn mount(target: &str, fs: Arc<dyn FileSystem>, source: &str) -> KResult<()>
     if mounts.contains_key(&target) {
         return Err(Errno::EBUSY);
     }
-    mounts.insert(target, Mount { fs, source: source.to_string() });
+    mounts.insert(
+        target,
+        Mount {
+            fs,
+            source: source.to_string(),
+        },
+    );
     Ok(())
 }
 
@@ -253,7 +268,10 @@ pub fn mount_list() -> Vec<Mount> {
 
 /// (mount point, source, file system type) for every mount.
 pub fn mounts() -> Vec<(String, String, &'static str)> {
-    mount_table().into_iter().map(|(p, m)| (p, m.source, m.fs.name())).collect()
+    mount_table()
+        .into_iter()
+        .map(|(p, m)| (p, m.source, m.fs.name()))
+        .collect()
 }
 
 pub fn is_mount_point(path: &str) -> bool {

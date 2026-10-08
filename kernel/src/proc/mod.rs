@@ -83,7 +83,11 @@ pub fn ps_info(t: &Task) -> PsInfo {
         ppid: p.ppid,
         pgid: p.pgid,
         sid: p.sid,
-        cmdline: if p.cmdline.is_empty() { alloc::vec![t.name()] } else { p.cmdline.clone() },
+        cmdline: if p.cmdline.is_empty() {
+            alloc::vec![t.name()]
+        } else {
+            p.cmdline.clone()
+        },
         ..PsInfo::default()
     };
     drop(p);
@@ -98,7 +102,13 @@ pub fn handle_page_fault(frame: &mut TrapFrame) -> bool {
     let write = frame.error & 2 != 0;
     let exec = frame.error & 16 != 0;
     let me = task::current();
-    if crate::mm::is_user_address(addr) && me.mm.lock().as_mut().is_some_and(|mm| mm.handle_fault(addr, write, exec)) {
+    if crate::mm::is_user_address(addr)
+        && me
+            .mm
+            .lock()
+            .as_mut()
+            .is_some_and(|mm| mm.handle_fault(addr, write, exec))
+    {
         return true;
     }
     if frame.from_user() {
@@ -108,7 +118,13 @@ pub fn handle_page_fault(frame: &mut TrapFrame) -> bool {
             me.pid,
             addr,
             frame.rip,
-            if write { "write" } else if exec { "exec" } else { "read" }
+            if write {
+                "write"
+            } else if exec {
+                "exec"
+            } else {
+                "read"
+            }
         );
         signal::force(&me, SIGSEGV);
         return true;
@@ -129,7 +145,13 @@ pub fn handle_user_exception(frame: &mut TrapFrame) -> bool {
         _ => return false,
     };
     let me = task::current();
-    kinfo!("{}[{}]: {} at ip {:#x}", me.name(), me.pid, huldra_abi::signal::name(sig), frame.rip);
+    kinfo!(
+        "{}[{}]: {} at ip {:#x}",
+        me.name(),
+        me.pid,
+        huldra_abi::signal::name(sig),
+        frame.rip
+    );
     signal::force(&me, sig);
     true
 }

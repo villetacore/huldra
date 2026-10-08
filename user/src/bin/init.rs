@@ -7,13 +7,19 @@
 #![no_main]
 
 use huldra_user::process::{self, ExitStatus};
-use huldra_user::{env, fs, println, eprintln, signal, sys, time, String, Vec};
+use huldra_user::{env, eprintln, fs, println, signal, sys, time, String, Vec};
 
 huldra_user::main!(main);
 
 fn mount_fstab() {
-    let Ok(text) = fs::read_to_string("/etc/fstab") else { return };
-    for line in text.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')) {
+    let Ok(text) = fs::read_to_string("/etc/fstab") else {
+        return;
+    };
+    for line in text
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+    {
         let f: Vec<&str> = line.split_whitespace().collect();
         if f.len() < 3 {
             continue;
@@ -62,9 +68,18 @@ fn main() -> i32 {
     mount_fstab();
     let version = fs::read_to_string("/etc/os-release")
         .ok()
-        .and_then(|t| t.lines().find_map(|l| l.strip_prefix("PRETTY_NAME=").map(|v| String::from(v.trim_matches('"')))))
+        .and_then(|t| {
+            t.lines().find_map(|l| {
+                l.strip_prefix("PRETTY_NAME=")
+                    .map(|v| String::from(v.trim_matches('"')))
+            })
+        })
         .unwrap_or_else(|| String::from("Huldra"));
-    println!("\n\x1b[1;36m{}\x1b[0m (init: pid {})", version, process::getpid());
+    println!(
+        "\n\x1b[1;36m{}\x1b[0m (init: pid {})",
+        version,
+        process::getpid()
+    );
 
     let shell = env::var("INIT_SHELL").unwrap_or("/bin/sh");
     let mut shell_pid = spawn_shell(shell);
@@ -72,7 +87,11 @@ fn main() -> i32 {
         match process::wait(-1) {
             Ok((pid, status)) if Some(pid) == shell_pid => {
                 if let ExitStatus::Signaled(sig) = status {
-                    eprintln!("init: shell killed by signal {} ({})", sig, signal::name(sig));
+                    eprintln!(
+                        "init: shell killed by signal {} ({})",
+                        sig,
+                        signal::name(sig)
+                    );
                 }
                 time::sleep_ms(200);
                 let _ = process::set_foreground(0, 1);

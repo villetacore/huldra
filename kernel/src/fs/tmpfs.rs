@@ -49,7 +49,12 @@ impl TmpInode {
 
 impl Inode for TmpInode {
     fn metadata(&self) -> Metadata {
-        let mut m = Metadata::new(self.dev, self.ino, self.kind, self.perm.load(Ordering::Relaxed));
+        let mut m = Metadata::new(
+            self.dev,
+            self.ino,
+            self.kind,
+            self.perm.load(Ordering::Relaxed),
+        );
         m.mtime = self.mtime.load(Ordering::Relaxed);
         match &*self.data.lock() {
             Data::File(v) => m.size = v.len() as u64,
@@ -103,7 +108,10 @@ impl Inode for TmpInode {
     fn lookup(&self, name: &str) -> KResult<Arc<dyn Inode>> {
         match &*self.data.lock() {
             Data::File(_) => Err(Errno::ENOTDIR),
-            Data::Dir(d) => d.get(name).map(|n| n.clone() as Arc<dyn Inode>).ok_or(Errno::ENOENT),
+            Data::Dir(d) => d
+                .get(name)
+                .map(|n| n.clone() as Arc<dyn Inode>)
+                .ok_or(Errno::ENOENT),
         }
     }
 
@@ -112,11 +120,18 @@ impl Inode for TmpInode {
             return Err(Errno::EPERM);
         }
         let mut data = self.data.lock();
-        let Data::Dir(d) = &mut *data else { return Err(Errno::ENOTDIR) };
+        let Data::Dir(d) = &mut *data else {
+            return Err(Errno::ENOTDIR);
+        };
         if d.contains_key(name) {
             return Err(Errno::EEXIST);
         }
-        let node = TmpInode::new(self.dev, NEXT_INO.fetch_add(1, Ordering::Relaxed), kind, perm);
+        let node = TmpInode::new(
+            self.dev,
+            NEXT_INO.fetch_add(1, Ordering::Relaxed),
+            kind,
+            perm,
+        );
         d.insert(name.to_string(), node.clone());
         drop(data);
         self.touch();
@@ -125,7 +140,9 @@ impl Inode for TmpInode {
 
     fn unlink(&self, name: &str) -> KResult<()> {
         let mut data = self.data.lock();
-        let Data::Dir(d) = &mut *data else { return Err(Errno::ENOTDIR) };
+        let Data::Dir(d) = &mut *data else {
+            return Err(Errno::ENOTDIR);
+        };
         let node = d.get(name).ok_or(Errno::ENOENT)?;
         if let Data::Dir(children) = &*node.data.lock() {
             if !children.is_empty() {
@@ -139,7 +156,10 @@ impl Inode for TmpInode {
     }
 
     fn rename(&self, old: &str, target: &Arc<dyn Inode>, new: &str) -> KResult<()> {
-        let target = target.as_any().downcast_ref::<TmpInode>().ok_or(Errno::EXDEV)?;
+        let target = target
+            .as_any()
+            .downcast_ref::<TmpInode>()
+            .ok_or(Errno::EXDEV)?;
         if target.dev != self.dev {
             return Err(Errno::EXDEV);
         }
@@ -152,7 +172,9 @@ impl Inode for TmpInode {
 
         if core::ptr::eq(self, target) {
             let mut data = self.data.lock();
-            let Data::Dir(d) = &mut *data else { return Err(Errno::ENOTDIR) };
+            let Data::Dir(d) = &mut *data else {
+                return Err(Errno::ENOTDIR);
+            };
             if old == new {
                 return d.contains_key(old).then_some(()).ok_or(Errno::ENOENT);
             }
@@ -172,7 +194,9 @@ impl Inode for TmpInode {
             let b = target.data.lock();
             (self.data.lock(), b)
         };
-        let (Data::Dir(src), Data::Dir(dst)) = (&mut *a, &mut *b) else { return Err(Errno::ENOTDIR) };
+        let (Data::Dir(src), Data::Dir(dst)) = (&mut *a, &mut *b) else {
+            return Err(Errno::ENOTDIR);
+        };
         check_target(dst, new)?;
         let node = src.remove(old).ok_or(Errno::ENOENT)?;
         dst.insert(new.to_string(), node);
@@ -182,7 +206,14 @@ impl Inode for TmpInode {
     fn readdir(&self) -> KResult<Vec<DirEntry>> {
         match &*self.data.lock() {
             Data::File(_) => Err(Errno::ENOTDIR),
-            Data::Dir(d) => Ok(d.iter().map(|(n, c)| DirEntry { name: n.clone(), ino: c.ino, kind: c.kind }).collect()),
+            Data::Dir(d) => Ok(d
+                .iter()
+                .map(|(n, c)| DirEntry {
+                    name: n.clone(),
+                    ino: c.ino,
+                    kind: c.kind,
+                })
+                .collect()),
         }
     }
 
@@ -197,7 +228,9 @@ pub struct TmpFs {
 
 impl TmpFs {
     pub fn new() -> Arc<TmpFs> {
-        Arc::new(TmpFs { root: TmpInode::new(alloc_dev(), 1, FileType::Directory, 0o755) })
+        Arc::new(TmpFs {
+            root: TmpInode::new(alloc_dev(), 1, FileType::Directory, 0o755),
+        })
     }
 }
 

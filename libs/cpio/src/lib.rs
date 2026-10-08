@@ -66,11 +66,18 @@ pub struct Reader<'a> {
 
 impl<'a> Reader<'a> {
     pub fn new(data: &'a [u8]) -> Self {
-        Reader { data, pos: 0, done: false }
+        Reader {
+            data,
+            pos: 0,
+            done: false,
+        }
     }
 
     fn next_entry(&mut self) -> Result<Option<Entry<'a>>, Error> {
-        let header = self.data.get(self.pos..self.pos + HEADER_LEN).ok_or(Error::Truncated)?;
+        let header = self
+            .data
+            .get(self.pos..self.pos + HEADER_LEN)
+            .ok_or(Error::Truncated)?;
         if &header[..6] != MAGIC {
             return Err(Error::BadMagic);
         }
@@ -82,16 +89,26 @@ impl<'a> Reader<'a> {
         }
 
         let name_start = self.pos + HEADER_LEN;
-        let name_bytes = self.data.get(name_start..name_start + name_size - 1).ok_or(Error::Truncated)?;
+        let name_bytes = self
+            .data
+            .get(name_start..name_start + name_size - 1)
+            .ok_or(Error::Truncated)?;
         let name = core::str::from_utf8(name_bytes).map_err(|_| Error::BadName)?;
         let data_start = align4(name_start + name_size);
-        let data = self.data.get(data_start..data_start + file_size).ok_or(Error::Truncated)?;
+        let data = self
+            .data
+            .get(data_start..data_start + file_size)
+            .ok_or(Error::Truncated)?;
         self.pos = align4(data_start + file_size);
 
         if name == TRAILER {
             return Ok(None);
         }
-        Ok(Some(Entry { name: name.trim_start_matches("./").trim_start_matches('/'), mode, data }))
+        Ok(Some(Entry {
+            name: name.trim_start_matches("./").trim_start_matches('/'),
+            mode,
+            data,
+        }))
     }
 }
 
@@ -130,7 +147,10 @@ impl Default for Writer {
 
 impl Writer {
     pub fn new() -> Self {
-        Writer { out: Vec::new(), next_ino: 1 }
+        Writer {
+            out: Vec::new(),
+            next_ino: 1,
+        }
     }
 
     fn push_hex(&mut self, v: u32) {
@@ -151,7 +171,21 @@ impl Writer {
         self.next_ino += 1;
         self.out.extend_from_slice(MAGIC);
         let nlink = if mode & S_IFMT == S_IFDIR { 2 } else { 1 };
-        let fields = [ino, mode, 0, 0, nlink, 0, data.len() as u32, 0, 0, 0, 0, name.len() as u32 + 1, 0];
+        let fields = [
+            ino,
+            mode,
+            0,
+            0,
+            nlink,
+            0,
+            data.len() as u32,
+            0,
+            0,
+            0,
+            0,
+            name.len() as u32 + 1,
+            0,
+        ];
         for f in fields {
             self.push_hex(f);
         }

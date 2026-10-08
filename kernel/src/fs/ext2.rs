@@ -71,11 +71,18 @@ impl Ext2Fs {
             st.free_blocks,
             st.blocks
         );
-        Ok(Arc::new(Ext2Fs { inner: Mutex::new(fs), dev: alloc_dev(), disk }))
+        Ok(Arc::new(Ext2Fs {
+            inner: Mutex::new(fs),
+            dev: alloc_dev(),
+            disk,
+        }))
     }
 
     fn node(self: &Arc<Self>, ino: u32) -> Arc<dyn Inode> {
-        Arc::new(Ext2Inode { fs: self.clone(), ino })
+        Arc::new(Ext2Inode {
+            fs: self.clone(),
+            ino,
+        })
     }
 }
 
@@ -92,8 +99,18 @@ fn kind_of(mode: u16) -> FileType {
 
 impl Inode for Ext2Inode {
     fn metadata(&self) -> Metadata {
-        let inode = self.fs.inner.lock().read_inode(self.ino).unwrap_or_default();
-        let mut m = Metadata::new(self.fs.dev, self.ino as u64, kind_of(inode.mode), (inode.mode & 0o7777) as u32);
+        let inode = self
+            .fs
+            .inner
+            .lock()
+            .read_inode(self.ino)
+            .unwrap_or_default();
+        let mut m = Metadata::new(
+            self.fs.dev,
+            self.ino as u64,
+            kind_of(inode.mode),
+            (inode.mode & 0o7777) as u32,
+        );
         m.size = inode.size;
         m.nlink = inode.links as u32;
         m.uid = inode.uid as u32;
@@ -112,7 +129,11 @@ impl Inode for Ext2Inode {
     }
 
     fn write_at(&self, offset: u64, buf: &[u8]) -> KResult<usize> {
-        self.fs.inner.lock().write(self.ino, offset, buf).map_err(errno)
+        self.fs
+            .inner
+            .lock()
+            .write(self.ino, offset, buf)
+            .map_err(errno)
     }
 
     fn truncate(&self, size: u64) -> KResult<()> {
@@ -130,7 +151,12 @@ impl Inode for Ext2Inode {
             FileType::Directory => ext2::S_IFDIR,
             _ => return Err(Errno::EPERM),
         };
-        let ino = self.fs.inner.lock().create(self.ino, name, type_bits | (perm & 0o7777) as u16).map_err(errno)?;
+        let ino = self
+            .fs
+            .inner
+            .lock()
+            .create(self.ino, name, type_bits | (perm & 0o7777) as u16)
+            .map_err(errno)?;
         Ok(self.fs.node(ino))
     }
 
@@ -139,11 +165,18 @@ impl Inode for Ext2Inode {
     }
 
     fn rename(&self, old: &str, target: &Arc<dyn Inode>, new: &str) -> KResult<()> {
-        let target = target.as_any().downcast_ref::<Ext2Inode>().ok_or(Errno::EXDEV)?;
+        let target = target
+            .as_any()
+            .downcast_ref::<Ext2Inode>()
+            .ok_or(Errno::EXDEV)?;
         if !Arc::ptr_eq(&self.fs, &target.fs) {
             return Err(Errno::EXDEV);
         }
-        self.fs.inner.lock().rename(self.ino, old, target.ino, new).map_err(errno)
+        self.fs
+            .inner
+            .lock()
+            .rename(self.ino, old, target.ino, new)
+            .map_err(errno)
     }
 
     fn readdir(&self) -> KResult<Vec<DirEntry>> {
@@ -153,7 +186,11 @@ impl Inode for Ext2Inode {
             .map(|e| DirEntry {
                 name: e.name,
                 ino: e.ino as u64,
-                kind: if e.file_type == ext2::FT_DIR { FileType::Directory } else { FileType::Regular },
+                kind: if e.file_type == ext2::FT_DIR {
+                    FileType::Directory
+                } else {
+                    FileType::Regular
+                },
             })
             .collect())
     }

@@ -12,7 +12,10 @@ pub fn uname(a: &mut Args) -> KResult<Ret> {
     let host = crate::fs::read_file("/etc/hostname").unwrap_or_default();
     let host = core::str::from_utf8(&host).unwrap_or("").trim();
     copy_cstr(&mut u.sysname, crate::NAME);
-    copy_cstr(&mut u.nodename, if host.is_empty() { "localhost" } else { host });
+    copy_cstr(
+        &mut u.nodename,
+        if host.is_empty() { "localhost" } else { host },
+    );
     copy_cstr(&mut u.release, crate::VERSION);
     copy_cstr(&mut u.version, "#1 SMP");
     copy_cstr(&mut u.machine, "x86_64");
@@ -46,7 +49,10 @@ pub fn nanosleep(a: &mut Args) -> KResult<Ret> {
     let r = sched::SLEEPERS.wait_until(|| (crate::time::ticks() >= target).then_some(()));
     if r.is_err() && a.a1() != 0 {
         let left_ms = target.saturating_sub(crate::time::ticks()) * 1000 / crate::time::HZ;
-        let rem = Timespec { tv_sec: (left_ms / 1000) as i64, tv_nsec: ((left_ms % 1000) * 1_000_000) as i64 };
+        let rem = Timespec {
+            tv_sec: (left_ms / 1000) as i64,
+            tv_nsec: ((left_ms % 1000) * 1_000_000) as i64,
+        };
         uaccess::write_user(a.a1(), &rem)?;
     }
     r?;
@@ -58,7 +64,10 @@ pub fn reboot(a: &mut Args) -> KResult<Ret> {
         return Err(Errno::EINVAL);
     }
     let cmd = a.a2() as u32;
-    if !matches!(cmd, LINUX_REBOOT_CMD_RESTART | LINUX_REBOOT_CMD_HALT | LINUX_REBOOT_CMD_POWER_OFF) {
+    if !matches!(
+        cmd,
+        LINUX_REBOOT_CMD_RESTART | LINUX_REBOOT_CMD_HALT | LINUX_REBOOT_CMD_POWER_OFF
+    ) {
         return Err(Errno::EINVAL);
     }
     crate::fs::sync_all();

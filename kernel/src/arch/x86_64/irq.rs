@@ -18,13 +18,21 @@ struct Line {
     name: &'static str,
 }
 
-static LINES: SpinLock<[Line; IRQ_LINES]> = SpinLock::new([Line { handler: None, name: "" }; IRQ_LINES]);
+static LINES: SpinLock<[Line; IRQ_LINES]> = SpinLock::new(
+    [Line {
+        handler: None,
+        name: "",
+    }; IRQ_LINES],
+);
 static COUNTS: [AtomicU64; IRQ_LINES] = [const { AtomicU64::new(0) }; IRQ_LINES];
 static USE_APIC: AtomicBool = AtomicBool::new(false);
 
 /// Installs `handler` for `irq` and unmasks the line.
 pub fn register(irq: u8, name: &'static str, handler: fn()) {
-    LINES.lock()[irq as usize] = Line { handler: Some(handler), name };
+    LINES.lock()[irq as usize] = Line {
+        handler: Some(handler),
+        name,
+    };
     if USE_APIC.load(Ordering::Acquire) {
         super::apic::ioapic_unmask(irq);
     } else {
@@ -37,7 +45,10 @@ pub fn switch_to_apic() {
     super::pic::disable();
     USE_APIC.store(true, Ordering::Release);
     // The local APIC timer replaces the PIT on line 0.
-    LINES.lock()[0] = Line { handler: None, name: "" };
+    LINES.lock()[0] = Line {
+        handler: None,
+        name: "",
+    };
     let lines = *LINES.lock();
     for (irq, line) in lines.iter().enumerate() {
         if line.handler.is_some() {
@@ -75,9 +86,18 @@ pub fn interrupts_text() -> String {
     let mut s = String::from("           CPU0\n");
     for (i, line) in lines.iter().enumerate() {
         if line.handler.is_some() {
-            s.push_str(&format!("{:>3}: {:>10}   {:<8} {}\n", i, COUNTS[i].load(Ordering::Relaxed), controller, line.name));
+            s.push_str(&format!(
+                "{:>3}: {:>10}   {:<8} {}\n",
+                i,
+                COUNTS[i].load(Ordering::Relaxed),
+                controller,
+                line.name
+            ));
         }
     }
-    s.push_str(&format!("LOC: {:>10}   local timer\n", super::apic::timer_ticks()));
+    s.push_str(&format!(
+        "LOC: {:>10}   local timer\n",
+        super::apic::timer_ticks()
+    ));
     s
 }

@@ -168,6 +168,7 @@ extern "C" fn syscall_dispatch(frame: &mut TrapFrame) -> u64 {
     arch::disable_interrupts();
     crate::proc::return_to_user(frame);
     let canonical = crate::mm::is_user_address(frame.rip) && frame.rip != 0;
-    let user_segments = frame.cs == arch::gdt::USER_CODE as u64 && frame.ss == arch::gdt::USER_DATA as u64;
+    let user_segments =
+        frame.cs == arch::gdt::USER_CODE as u64 && frame.ss == arch::gdt::USER_DATA as u64;
     (canonical && user_segments) as u64
 }

@@ -30,7 +30,11 @@ impl Pipe {
     pub fn new() -> Arc<Pipe> {
         Arc::new(Pipe {
             ino: NEXT_INO.fetch_add(1, Ordering::Relaxed),
-            state: SpinLock::new(State { data: VecDeque::new(), readers: 0, writers: 0 }),
+            state: SpinLock::new(State {
+                data: VecDeque::new(),
+                readers: 0,
+                writers: 0,
+            }),
             readable: WaitQueue::new(),
             writable: WaitQueue::new(),
         })

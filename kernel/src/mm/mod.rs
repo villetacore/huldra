@@ -71,7 +71,10 @@ pub fn kernel_layout() -> KernelLayout {
         start: addr_of!(__kernel_start) as u64,
         end: addr_of!(__kernel_end) as u64,
         text: (addr_of!(__text_start) as u64, addr_of!(__text_end) as u64),
-        rodata: (addr_of!(__rodata_start) as u64, addr_of!(__rodata_end) as u64),
+        rodata: (
+            addr_of!(__rodata_start) as u64,
+            addr_of!(__rodata_end) as u64,
+        ),
         data: (addr_of!(__data_start) as u64, addr_of!(__kernel_end) as u64),
     }
 }
@@ -136,7 +139,10 @@ mod tests {
         let page = frame::alloc_zeroed().unwrap();
         let flags = PteFlags::USER | PteFlags::WRITABLE | PteFlags::no_execute();
         pt.map(0x40_0000, page, flags).unwrap();
-        assert_eq!(pt.map(0x40_0000, page, flags), Err(crate::arch::paging::MapError::AlreadyMapped));
+        assert_eq!(
+            pt.map(0x40_0000, page, flags),
+            Err(crate::arch::paging::MapError::AlreadyMapped)
+        );
         let (phys, f) = pt.translate(0x40_0123).unwrap();
         assert_eq!(phys, page + 0x123);
         assert!(f.contains(PteFlags::USER | PteFlags::WRITABLE));
@@ -156,6 +162,9 @@ mod tests {
             assert_eq!(p.read_volatile(), 0xDEAD_BEEF);
         }
         let guard = top - kstack::STACK_SIZE - 1;
-        assert!(vmm::kernel_page_table().translate(guard).is_none(), "guard page must be unmapped");
+        assert!(
+            vmm::kernel_page_table().translate(guard).is_none(),
+            "guard page must be unmapped"
+        );
     }
 }

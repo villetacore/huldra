@@ -86,7 +86,13 @@ fn calibrate_timer() -> u32 {
 /// Brings up the APICs if the firmware describes them. Must run with
 /// interrupts disabled; returns false if the legacy PIC stays in charge.
 pub fn init() -> bool {
-    let Some(Madt { local_apic, io_apics, overrides, cpus }) = acpi::parse_madt() else {
+    let Some(Madt {
+        local_apic,
+        io_apics,
+        overrides,
+        cpus,
+    }) = acpi::parse_madt()
+    else {
         kwarn!("ACPI MADT not found, staying on the 8259 PIC");
         return false;
     };
@@ -94,7 +100,11 @@ pub fn init() -> bool {
         return false;
     }
     unsafe { wrmsr(MSR_APIC_BASE, rdmsr(MSR_APIC_BASE) | (1 << 11)) };
-    APIC.call_once(|| Apic { lapic: local_apic, io_apics, overrides });
+    APIC.call_once(|| Apic {
+        lapic: local_apic,
+        io_apics,
+        overrides,
+    });
     lapic_write(LAPIC_SVR, 0x100 | SPURIOUS_VECTOR as u32);
 
     // Mask every I/O APIC input until a driver asks for it.
@@ -108,10 +118,10 @@ pub fn init() -> bool {
     let per_tick = calibrate_timer();
     TIMER_COUNT.call_once(|| per_tick);
     kinfo!(
-        "APIC: local APIC at {:#x} (id {}), {} I/O APIC(s), {} CPU(s), timer {} ticks/10ms",
+        "APIC: local APIC at {:#x} (id {}), I/O APIC id {}, {} CPU(s), timer {} ticks/10ms",
         local_apic,
         lapic_read(LAPIC_ID) >> 24,
-        APIC.expect("APIC").io_apics.len(),
+        APIC.expect("APIC").io_apics[0].id,
         cpus,
         per_tick
     );
@@ -133,7 +143,13 @@ pub fn ioapic_unmask(irq: u8) {
     let Some(apic) = APIC.get() else { return };
     let ovr = apic.overrides.iter().find(|o| o.irq == irq);
     let gsi = ovr.map_or(irq as u32, |o| o.gsi);
-    let Some(io) = apic.io_apics.iter().find(|io| gsi >= io.gsi_base && gsi < io.gsi_base + 24) else { return };
+    let Some(io) = apic
+        .io_apics
+        .iter()
+        .find(|io| gsi >= io.gsi_base && gsi < io.gsi_base + 24)
+    else {
+        return;
+    };
     let mut low = (IRQ_BASE + irq) as u32;
     if ovr.is_some_and(|o| o.active_low) {
         low |= 1 << 13;

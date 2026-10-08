@@ -11,7 +11,10 @@ pub struct ArrayVec<T: Copy, const N: usize> {
 
 impl<T: Copy + Default, const N: usize> ArrayVec<T, N> {
     pub fn new() -> Self {
-        ArrayVec { items: [T::default(); N], len: 0 }
+        ArrayVec {
+            items: [T::default(); N],
+            len: 0,
+        }
     }
 }
 
@@ -42,7 +45,10 @@ pub struct ArrayString<const N: usize> {
 
 impl<const N: usize> ArrayString<N> {
     pub const fn new() -> Self {
-        ArrayString { bytes: [0; N], len: 0 }
+        ArrayString {
+            bytes: [0; N],
+            len: 0,
+        }
     }
 
     pub fn from_bytes(src: &[u8]) -> Self {

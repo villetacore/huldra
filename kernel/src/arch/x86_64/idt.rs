@@ -60,7 +60,11 @@ pub fn init() {
         let stubs = &*addr_of!(isr_stub_table);
         for (vector, &handler) in stubs.iter().enumerate() {
             let ist = if vector == 8 { DOUBLE_FAULT_IST } else { 0 };
-            let attributes = if vector == SYSCALL_VECTOR { USER_INTERRUPT_GATE } else { INTERRUPT_GATE };
+            let attributes = if vector == SYSCALL_VECTOR {
+                USER_INTERRUPT_GATE
+            } else {
+                INTERRUPT_GATE
+            };
             idt[vector] = Gate::new(handler, ist, attributes);
         }
 

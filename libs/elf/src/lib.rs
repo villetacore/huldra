@@ -105,7 +105,11 @@ impl<'a> Elf<'a> {
         }
         for ph in elf.program_headers() {
             if ph.kind == PT_LOAD
-                && (ph.filesz > ph.memsz || ph.offset.checked_add(ph.filesz).is_none_or(|e| e > data.len() as u64))
+                && (ph.filesz > ph.memsz
+                    || ph
+                        .offset
+                        .checked_add(ph.filesz)
+                        .is_none_or(|e| e > data.len() as u64))
             {
                 return Err(Error::SegmentOutOfFile);
             }
@@ -136,7 +140,9 @@ impl<'a> Elf<'a> {
 
     /// True if the program needs a dynamic loader.
     pub fn interpreter(&self) -> Option<&'a [u8]> {
-        self.program_headers().find(|p| p.kind == PT_INTERP).map(|p| self.segment_data(&p))
+        self.program_headers()
+            .find(|p| p.kind == PT_INTERP)
+            .map(|p| self.segment_data(&p))
     }
 
     /// Virtual address of the program header table once loaded, if it is
@@ -194,7 +200,10 @@ mod tests {
 
     #[test]
     fn parses_segments() {
-        let image = build(&[(PF_R | PF_X, 0x40_1000, b"code", 4), (PF_R | PF_W, 0x40_2000, b"data", 0x100)]);
+        let image = build(&[
+            (PF_R | PF_X, 0x40_1000, b"code", 4),
+            (PF_R | PF_W, 0x40_2000, b"data", 0x100),
+        ]);
         let elf = Elf::parse(&image).unwrap();
         assert_eq!(elf.kind, ET_EXEC);
         assert_eq!(elf.entry, 0x40_1000);

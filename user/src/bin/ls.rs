@@ -86,7 +86,12 @@ fn list(path: &str, o: &Options, header: bool) -> bool {
         names.push(".".into());
         names.push("..".into());
     }
-    names.extend(entries.into_iter().map(|e| e.name).filter(|n| o.all || !n.starts_with('.')));
+    names.extend(
+        entries
+            .into_iter()
+            .map(|e| e.name)
+            .filter(|n| o.all || !n.starts_with('.')),
+    );
     for name in &names {
         let full = fs::join(path, name);
         match fs::metadata(&full) {
@@ -101,7 +106,11 @@ fn list(path: &str, o: &Options, header: bool) -> bool {
 }
 
 fn main() -> i32 {
-    let mut o = Options { long: false, all: false, one_per_line: false };
+    let mut o = Options {
+        long: false,
+        all: false,
+        one_per_line: false,
+    };
     let mut paths = Vec::new();
     for a in &env::args()[1..] {
         if let Some(flags) = a.strip_prefix('-').filter(|f| !f.is_empty()) {

@@ -45,7 +45,11 @@ impl Inode for DevRoot {
             .iter()
             .map(|(n, d)| {
                 let m = d.metadata();
-                DirEntry { name: n.clone(), ino: m.ino, kind: m.kind }
+                DirEntry {
+                    name: n.clone(),
+                    ino: m.ino,
+                    kind: m.kind,
+                }
             })
             .collect())
     }
@@ -102,8 +106,18 @@ impl Inode for CharDevice {
     }
 }
 
-fn char_device(rdev: u64, read: fn(&mut [u8]) -> KResult<usize>, write: fn(&[u8]) -> KResult<usize>) -> Arc<dyn Inode> {
-    Arc::new(CharDevice { ino: dev_ino(), rdev, perm: 0o666, read, write })
+fn char_device(
+    rdev: u64,
+    read: fn(&mut [u8]) -> KResult<usize>,
+    write: fn(&[u8]) -> KResult<usize>,
+) -> Arc<dyn Inode> {
+    Arc::new(CharDevice {
+        ino: dev_ino(),
+        rdev,
+        perm: 0o666,
+        read,
+        write,
+    })
 }
 
 fn discard(buf: &[u8]) -> KResult<usize> {
@@ -128,15 +142,34 @@ fn random_bytes(buf: &mut [u8]) -> KResult<usize> {
 
 pub fn new() -> Arc<DevFs> {
     register("null", char_device(makedev(1, 3), |_| Ok(0), discard));
-    register("zero", char_device(makedev(1, 5), |b| {
-        b.fill(0);
-        Ok(b.len())
-    }, discard));
+    register(
+        "zero",
+        char_device(
+            makedev(1, 5),
+            |b| {
+                b.fill(0);
+                Ok(b.len())
+            },
+            discard,
+        ),
+    );
     register("random", char_device(makedev(1, 8), random_bytes, discard));
     register("urandom", char_device(makedev(1, 9), random_bytes, discard));
-    register("kmsg", char_device(makedev(1, 11), |_| Ok(0), |b| {
-        kinfo!("{}", core::str::from_utf8(b).unwrap_or("<binary>").trim_end());
-        Ok(b.len())
-    }));
-    Arc::new(DevFs { root: Arc::new(DevRoot { dev: alloc_dev() }) })
+    register(
+        "kmsg",
+        char_device(
+            makedev(1, 11),
+            |_| Ok(0),
+            |b| {
+                kinfo!(
+                    "{}",
+                    core::str::from_utf8(b).unwrap_or("<binary>").trim_end()
+                );
+                Ok(b.len())
+            },
+        ),
+    );
+    Arc::new(DevFs {
+        root: Arc::new(DevRoot { dev: alloc_dev() }),
+    })
 }

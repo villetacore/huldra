@@ -101,7 +101,9 @@ fn iovecs(addr: u64, count: u64) -> KResult<Vec<IoVec>> {
     if count > 1024 {
         return Err(Errno::EINVAL);
     }
-    (0..count).map(|i| uaccess::read_user::<IoVec>(addr + i * 16)).collect()
+    (0..count)
+        .map(|i| uaccess::read_user::<IoVec>(addr + i * 16))
+        .collect()
 }
 
 pub fn readv(a: &mut Args) -> KResult<Ret> {
@@ -257,7 +259,11 @@ pub fn fcntl(a: &mut Args) -> KResult<Ret> {
             let cloexec = a.a1() as u32 == F_DUPFD_CLOEXEC;
             value(files.alloc_from(a.a2() as usize, f, cloexec)? as u64)
         }
-        F_GETFD => value(if files.cloexec(fd)? { FD_CLOEXEC as u64 } else { 0 }),
+        F_GETFD => value(if files.cloexec(fd)? {
+            FD_CLOEXEC as u64
+        } else {
+            0
+        }),
         F_SETFD => {
             files.set_cloexec(fd, a.a2() as u32 & FD_CLOEXEC != 0)?;
             value(0)
@@ -368,7 +374,11 @@ pub fn sync(_a: &mut Args) -> KResult<Ret> {
 }
 
 pub fn mount(a: &mut Args) -> KResult<Ret> {
-    let source = if a.a0() != 0 { uaccess::read_path(a.a0())? } else { String::new() };
+    let source = if a.a0() != 0 {
+        uaccess::read_path(a.a0())?
+    } else {
+        String::new()
+    };
     let target = path_at(AT_FDCWD, a.a1())?;
     let fstype = uaccess::read_cstr(a.a2(), 32)?;
     fs::mount_by_type(&fstype, &source, &target, a.a3())?;

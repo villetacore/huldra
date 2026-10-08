@@ -4,8 +4,8 @@
 #![no_main]
 
 use huldra_user::io::{Reader, STDIN};
-use huldra_user::{env, eprintln, println, sys, String};
 use huldra_user::Vec;
+use huldra_user::{env, eprintln, println, sys, String};
 
 huldra_user::main!(main);
 

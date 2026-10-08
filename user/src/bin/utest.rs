@@ -88,7 +88,12 @@ fn many_children() -> TestResult {
     let mut seen = 0;
     while let Ok((pid, status)) = process::wait(-1) {
         let expected = pids.iter().find(|p| p.0 == pid).map(|p| p.1);
-        check!(Some(status) == expected.map(ExitStatus::Exited), "pid {} status {:?}", pid, status);
+        check!(
+            Some(status) == expected.map(ExitStatus::Exited),
+            "pid {} status {:?}",
+            pid,
+            status
+        );
         seen += 1;
     }
     check!(seen == 20);
@@ -103,7 +108,10 @@ fn fork_copies_memory() -> TestResult {
         (v.iter().sum::<u64>() == 70_000) as i32
     });
     check!(status == ExitStatus::Exited(1));
-    check!(v.iter().sum::<u64>() == 10_000, "parent memory changed by child");
+    check!(
+        v.iter().sum::<u64>() == 10_000,
+        "parent memory changed by child"
+    );
     Ok(())
 }
 
@@ -115,21 +123,32 @@ fn pipes_between_processes() -> TestResult {
         0
     });
     check!(status.success());
-    let numbers: Vec<u32> = out.split_whitespace().filter_map(|n| n.parse().ok()).collect();
+    let numbers: Vec<u32> = out
+        .split_whitespace()
+        .filter_map(|n| n.parse().ok())
+        .collect();
     check!(numbers.len() == 1000 && numbers[999] == 999);
     Ok(())
 }
 
 fn exec_with_args_and_env() -> TestResult {
     let (status, out) = capture(|| {
-        let e = process::exec("/bin/echo", &["echo", "one", "two  three"], &[String::from("X=1")]);
+        let e = process::exec(
+            "/bin/echo",
+            &["echo", "one", "two  three"],
+            &[String::from("X=1")],
+        );
         huldra_user::eprintln!("exec: {}", e);
         1
     });
     check!(status.success());
     check!(out == "one two  three\n", "got {:?}", out);
     let (_, out) = capture(|| {
-        process::exec("/bin/env", &["env"], &[String::from("GREETING=hello"), String::from("A=b")]);
+        process::exec(
+            "/bin/env",
+            &["env"],
+            &[String::from("GREETING=hello"), String::from("A=b")],
+        );
         1
     });
     check!(out.contains("GREETING=hello"), "env got {:?}", out);
@@ -158,7 +177,12 @@ fn shebang_scripts() -> TestResult {
         1
     });
     let _ = fs::remove_file("/tmp/utest.sh");
-    check!(status.success() && out == "script says hi\n", "got {:?} ({:?})", out, status);
+    check!(
+        status.success() && out == "script says hi\n",
+        "got {:?} ({:?})",
+        out,
+        status
+    );
     Ok(())
 }
 
@@ -172,7 +196,10 @@ fn signal_handlers() -> TestResult {
     SIGNALS.store(0, Ordering::SeqCst);
     signal::handle(signal::SIGUSR1, count_signal).unwrap();
     signal::kill(process::getpid() as i32, signal::SIGUSR1).unwrap();
-    check!(SIGNALS.load(Ordering::SeqCst) == signal::SIGUSR1, "handler did not run");
+    check!(
+        SIGNALS.load(Ordering::SeqCst) == signal::SIGUSR1,
+        "handler did not run"
+    );
     // Blocked signals wait until unblocked.
     signal::block(signal::SIGUSR1).unwrap();
     signal::kill(process::getpid() as i32, signal::SIGUSR1).unwrap();
@@ -188,7 +215,11 @@ fn default_actions() -> TestResult {
         let _ = signal::kill(process::getpid() as i32, signal::SIGTERM);
         0
     });
-    check!(status == ExitStatus::Signaled(signal::SIGTERM), "{:?}", status);
+    check!(
+        status == ExitStatus::Signaled(signal::SIGTERM),
+        "{:?}",
+        status
+    );
     let status = in_child(|| {
         let _ = signal::ignore(signal::SIGTERM);
         let _ = signal::kill(process::getpid() as i32, signal::SIGTERM);
@@ -209,7 +240,11 @@ fn kill_sleeping_child() -> TestResult {
     time::sleep_ms(50);
     signal::kill(pid as i32, signal::SIGKILL).unwrap();
     let (_, status) = process::wait(pid as i32).unwrap();
-    check!(status == ExitStatus::Signaled(signal::SIGKILL), "{:?}", status);
+    check!(
+        status == ExitStatus::Signaled(signal::SIGKILL),
+        "{:?}",
+        status
+    );
     Ok(())
 }
 
@@ -242,25 +277,45 @@ fn interrupted_read() -> TestResult {
 
 fn segfaults_kill_only_the_child() -> TestResult {
     let status = in_child(|| unsafe { core::ptr::read_volatile(0x10 as *const u64) as i32 });
-    check!(status == ExitStatus::Signaled(signal::SIGSEGV), "null read: {:?}", status);
+    check!(
+        status == ExitStatus::Signaled(signal::SIGSEGV),
+        "null read: {:?}",
+        status
+    );
     let status = in_child(|| unsafe {
         // Kernel memory is not accessible from user mode.
         core::ptr::write_volatile(0xFFFF_8000_0000_0000 as *mut u64, 1);
         0
     });
-    check!(status == ExitStatus::Signaled(signal::SIGSEGV), "kernel write: {:?}", status);
+    check!(
+        status == ExitStatus::Signaled(signal::SIGSEGV),
+        "kernel write: {:?}",
+        status
+    );
     let status = in_child(|| unsafe {
         // Code is not writable.
         core::ptr::write_volatile(main as *const () as *mut u8, 0x90);
         0
     });
-    check!(status == ExitStatus::Signaled(signal::SIGSEGV), "text write: {:?}", status);
+    check!(
+        status == ExitStatus::Signaled(signal::SIGSEGV),
+        "text write: {:?}",
+        status
+    );
     Ok(())
 }
 
 fn bad_pointers_give_efault() -> TestResult {
-    check!(sys::write(1, unsafe { core::slice::from_raw_parts(0x1000 as *const u8, 16) }) == Err(Errno::EFAULT));
-    check!(sys::read(0, unsafe { core::slice::from_raw_parts_mut(0xFFFF_8000_0000_0000u64 as *mut u8, 16) }) == Err(Errno::EFAULT));
+    check!(
+        sys::write(1, unsafe {
+            core::slice::from_raw_parts(0x1000 as *const u8, 16)
+        }) == Err(Errno::EFAULT)
+    );
+    check!(
+        sys::read(0, unsafe {
+            core::slice::from_raw_parts_mut(0xFFFF_8000_0000_0000u64 as *mut u8, 16)
+        }) == Err(Errno::EFAULT)
+    );
     check!(sys::stat("").err() == Some(Errno::ENOENT));
     Ok(())
 }
@@ -272,13 +327,25 @@ fn memory_mappings() -> TestResult {
     drop(v);
 
     let len = 1 << 20;
-    let addr = sys::mmap(0, len, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0).unwrap();
+    let addr = sys::mmap(
+        0,
+        len,
+        PROT_READ | PROT_WRITE,
+        MAP_PRIVATE | MAP_ANONYMOUS,
+        -1,
+        0,
+    )
+    .unwrap();
     let mem = unsafe { core::slice::from_raw_parts_mut(addr as *mut u8, len) };
     check!(mem.iter().all(|&b| b == 0), "anonymous memory not zeroed");
     mem.fill(0xAB);
     sys::munmap(addr, len).unwrap();
     let status = in_child(|| unsafe { core::ptr::read_volatile(addr as *const u8) as i32 });
-    check!(status == ExitStatus::Signaled(signal::SIGSEGV), "access after munmap: {:?}", status);
+    check!(
+        status == ExitStatus::Signaled(signal::SIGSEGV),
+        "access after munmap: {:?}",
+        status
+    );
 
     let ro = sys::mmap(0, 4096, PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0).unwrap();
     let status = in_child(|| unsafe {
@@ -318,7 +385,11 @@ fn files_and_directories() -> TestResult {
     check!(fs::read("/tmp/utest/a/b/file").unwrap() == b"0123XY");
 
     fs::rename("/tmp/utest/a/b/file", "/tmp/utest/moved").map_err(e)?;
-    let names: Vec<String> = fs::read_dir("/tmp/utest").map_err(e)?.into_iter().map(|d| d.name).collect();
+    let names: Vec<String> = fs::read_dir("/tmp/utest")
+        .map_err(e)?
+        .into_iter()
+        .map(|d| d.name)
+        .collect();
     check!(names == ["a", "moved"], "{:?}", names);
     check!(fs::remove_dir("/tmp/utest/a") == Err(Errno::ENOTEMPTY));
     check!(sys::open("/tmp/utest/moved", O_CREAT | O_EXCL | O_WRONLY, 0o644) == Err(Errno::EEXIST));
@@ -379,8 +450,12 @@ fn proc_filesystem() -> TestResult {
     let me = process::getpid();
     let status = fs::read_to_string(&huldra_user::format!("/proc/{}/status", me)).unwrap();
     check!(status.contains("Name:\tutest"), "{}", status);
-    check!(fs::read_to_string("/proc/self/cmdline").unwrap().starts_with("utest"));
-    check!(fs::read_to_string("/proc/meminfo").unwrap().contains("MemFree"));
+    check!(fs::read_to_string("/proc/self/cmdline")
+        .unwrap()
+        .starts_with("utest"));
+    check!(fs::read_to_string("/proc/meminfo")
+        .unwrap()
+        .contains("MemFree"));
     Ok(())
 }
 
@@ -397,7 +472,10 @@ fn main() -> i32 {
         ("default_actions", default_actions),
         ("kill_sleeping_child", kill_sleeping_child),
         ("interrupted_read", interrupted_read),
-        ("segfaults_kill_only_the_child", segfaults_kill_only_the_child),
+        (
+            "segfaults_kill_only_the_child",
+            segfaults_kill_only_the_child,
+        ),
         ("bad_pointers_give_efault", bad_pointers_give_efault),
         ("memory_mappings", memory_mappings),
         ("files_and_directories", files_and_directories),

@@ -30,12 +30,6 @@ pub fn write_byte(b: u8) {
     }
 }
 
-pub fn write_str(s: &str) {
-    for b in s.bytes() {
-        write_byte(b);
-    }
-}
-
 /// IRQ4 handler: passes received bytes to the terminal.
 pub fn handle_irq() {
     while let Some(b) = poll() {

@@ -25,8 +25,16 @@ fn main() -> i32 {
         eprintln!("usage: grep [-i] [-v] [-n] [-c] PATTERN [file...]");
         return 2;
     };
-    let pattern = if ignore_case { pattern.to_lowercase() } else { String::from(pattern.as_str()) };
-    let files: Vec<&str> = if rest.len() > 1 { rest[1..].iter().map(|s| s.as_str()).collect() } else { Vec::from(["-"]) };
+    let pattern = if ignore_case {
+        pattern.to_lowercase()
+    } else {
+        String::from(pattern.as_str())
+    };
+    let files: Vec<&str> = if rest.len() > 1 {
+        rest[1..].iter().map(|s| s.as_str()).collect()
+    } else {
+        Vec::from(["-"])
+    };
     let show_name = files.len() > 1;
     let mut found = false;
     for f in &files {
@@ -46,12 +54,20 @@ fn main() -> i32 {
         let mut n = 0;
         while let Ok(Some(line)) = r.read_line() {
             n += 1;
-            let hay = if ignore_case { line.to_lowercase() } else { line.clone() };
+            let hay = if ignore_case {
+                line.to_lowercase()
+            } else {
+                line.clone()
+            };
             if hay.contains(pattern.as_str()) != invert {
                 count += 1;
                 found = true;
                 if !count_only {
-                    let prefix = if show_name { huldra_user::format!("{}:", f) } else { String::new() };
+                    let prefix = if show_name {
+                        huldra_user::format!("{}:", f)
+                    } else {
+                        String::new()
+                    };
                     if numbers {
                         println!("{}{}:{}", prefix, n, line);
                     } else {

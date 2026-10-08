@@ -67,7 +67,15 @@ const fn class_size(class: usize) -> usize {
 
 impl<P: PageSource> SlabAllocator<P> {
     pub const fn new(source: P) -> Self {
-        SlabAllocator { heads: [null_mut(); CLASSES], source, stats: Stats { allocated: 0, slab_pages_bytes: 0, large_bytes: 0 } }
+        SlabAllocator {
+            heads: [null_mut(); CLASSES],
+            source,
+            stats: Stats {
+                allocated: 0,
+                slab_pages_bytes: 0,
+                large_bytes: 0,
+            },
+        }
     }
 
     pub fn stats(&self) -> Stats {
@@ -87,7 +95,9 @@ impl<P: PageSource> SlabAllocator<P> {
         let size = class_size(class);
         for i in (0..PAGE_SIZE / size).rev() {
             let obj = page.add(i * size) as *mut FreeObject;
-            obj.write(FreeObject { next: self.heads[class] });
+            obj.write(FreeObject {
+                next: self.heads[class],
+            });
             self.heads[class] = obj;
         }
         true
@@ -123,7 +133,9 @@ impl<P: PageSource> SlabAllocator<P> {
         match classify(&layout) {
             Kind::Small(class) => {
                 let obj = ptr as *mut FreeObject;
-                obj.write(FreeObject { next: self.heads[class] });
+                obj.write(FreeObject {
+                    next: self.heads[class],
+                });
                 self.heads[class] = obj;
                 self.stats.allocated -= class_size(class);
             }

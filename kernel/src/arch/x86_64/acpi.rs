@@ -33,7 +33,8 @@ unsafe fn read<T: Copy>(phys: u64) -> T {
 }
 
 fn checksum_ok(phys: u64, len: u32) -> bool {
-    let bytes = unsafe { core::slice::from_raw_parts(phys_to_virt(phys) as *const u8, len as usize) };
+    let bytes =
+        unsafe { core::slice::from_raw_parts(phys_to_virt(phys) as *const u8, len as usize) };
     bytes.iter().fold(0u8, |a, &b| a.wrapping_add(b)) == 0
 }
 
@@ -73,7 +74,11 @@ fn scan_for_root() -> Option<(u64, bool)> {
             if unsafe { read::<[u8; 8]>(p) } == *b"RSD PTR " && checksum_ok(p, 20) {
                 let revision = unsafe { read::<u8>(p + 15) };
                 let xsdt = unsafe { read::<u64>(p + 24) };
-                return Some(if revision >= 2 && xsdt != 0 { (xsdt, true) } else { (unsafe { read::<u32>(p + 16) } as u64, false) });
+                return Some(if revision >= 2 && xsdt != 0 {
+                    (xsdt, true)
+                } else {
+                    (unsafe { read::<u32>(p + 16) } as u64, false)
+                });
             }
             p += 16;
         }
@@ -89,7 +94,10 @@ pub fn parse_madt() -> Option<Madt> {
         if !checksum_ok(madt, len) {
             return None;
         }
-        let mut info = Madt { local_apic: read::<u32>(madt + 36) as u64, ..Madt::default() };
+        let mut info = Madt {
+            local_apic: read::<u32>(madt + 36) as u64,
+            ..Madt::default()
+        };
         let mut p = madt + 44;
         while p + 2 <= madt + len as u64 {
             let (kind, entry_len) = (read::<u8>(p), read::<u8>(p + 1) as u64);

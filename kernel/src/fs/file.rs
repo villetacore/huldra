@@ -21,7 +21,12 @@ pub struct OpenFile {
 impl OpenFile {
     pub fn new(inode: Arc<dyn Inode>, flags: u32, path: String) -> KResult<Arc<OpenFile>> {
         inode.open(flags)?;
-        Ok(Arc::new(OpenFile { inode, offset: SpinLock::new(0), flags: AtomicU32::new(flags), path }))
+        Ok(Arc::new(OpenFile {
+            inode,
+            offset: SpinLock::new(0),
+            flags: AtomicU32::new(flags),
+            path,
+        }))
     }
 
     pub fn flags(&self) -> u32 {
@@ -31,7 +36,8 @@ impl OpenFile {
     /// Updates the status flags F_SETFL may change (O_APPEND, O_NONBLOCK).
     pub fn set_status_flags(&self, flags: u32) {
         let keep = self.flags() & !(O_APPEND | O_NONBLOCK);
-        self.flags.store(keep | (flags & (O_APPEND | O_NONBLOCK)), Ordering::Relaxed);
+        self.flags
+            .store(keep | (flags & (O_APPEND | O_NONBLOCK)), Ordering::Relaxed);
     }
 
     pub fn readable(&self) -> bool {
@@ -43,7 +49,10 @@ impl OpenFile {
     }
 
     fn is_seekable(&self) -> bool {
-        !matches!(self.inode.metadata().kind, FileType::Fifo | FileType::CharDevice | FileType::Socket)
+        !matches!(
+            self.inode.metadata().kind,
+            FileType::Fifo | FileType::CharDevice
+        )
     }
 
     pub fn read(&self, buf: &mut [u8]) -> KResult<usize> {
@@ -62,7 +71,11 @@ impl OpenFile {
         if !self.writable() {
             return Err(Errno::EBADF);
         }
-        let off = if self.flags() & O_APPEND != 0 { self.inode.metadata().size } else { *self.offset.lock() };
+        let off = if self.flags() & O_APPEND != 0 {
+            self.inode.metadata().size
+        } else {
+            *self.offset.lock()
+        };
         let n = self.inode.write_at(off, buf)?;
         if self.is_seekable() {
             *self.offset.lock() = off + n as u64;
@@ -95,7 +108,10 @@ impl OpenFile {
             SEEK_END => self.inode.metadata().size as i64,
             _ => return Err(Errno::EINVAL),
         };
-        let new = base.checked_add(off).filter(|&n| n >= 0).ok_or(Errno::EINVAL)?;
+        let new = base
+            .checked_add(off)
+            .filter(|&n| n >= 0)
+            .ok_or(Errno::EINVAL)?;
         *cur = new as u64;
         Ok(new as u64)
     }
@@ -107,13 +123,33 @@ impl OpenFile {
             return Err(Errno::ENOTDIR);
         }
         let mut entries = self.inode.readdir()?;
-        entries.insert(0, super::vfs::DirEntry { name: "..".into(), ino: meta.ino, kind: FileType::Directory });
-        entries.insert(0, super::vfs::DirEntry { name: ".".into(), ino: meta.ino, kind: FileType::Directory });
+        entries.insert(
+            0,
+            super::vfs::DirEntry {
+                name: "..".into(),
+                ino: meta.ino,
+                kind: FileType::Directory,
+            },
+        );
+        entries.insert(
+            0,
+            super::vfs::DirEntry {
+                name: ".".into(),
+                ino: meta.ino,
+                kind: FileType::Directory,
+            },
+        );
 
         let mut cur = self.offset.lock();
         let mut written = 0;
         for (i, e) in entries.iter().enumerate().skip(*cur as usize) {
-            match encode_dirent64(&mut buf[written..], e.ino, (i + 1) as i64, e.kind.dirent_type(), e.name.as_bytes()) {
+            match encode_dirent64(
+                &mut buf[written..],
+                e.ino,
+                (i + 1) as i64,
+                e.kind.dirent_type(),
+                e.name.as_bytes(),
+            ) {
                 Some(n) => written += n,
                 None if written == 0 => return Err(Errno::EINVAL),
                 None => break,
@@ -151,7 +187,9 @@ impl FdTable {
 
     /// Installs `file` at the lowest free descriptor `>= min`.
     pub fn alloc_from(&mut self, min: usize, file: Arc<OpenFile>, cloexec: bool) -> KResult<i32> {
-        let fd = (min..MAX_FDS).find(|&i| self.fds.get(i).is_none_or(|e| e.is_none())).ok_or(Errno::EMFILE)?;
+        let fd = (min..MAX_FDS)
+            .find(|&i| self.fds.get(i).is_none_or(|e| e.is_none()))
+            .ok_or(Errno::EMFILE)?;
         if fd >= self.fds.len() {
             self.fds.resize(fd + 1, None);
         }
@@ -164,7 +202,11 @@ impl FdTable {
     }
 
     pub fn get(&self, fd: i32) -> KResult<Arc<OpenFile>> {
-        self.fds.get(fd as usize).and_then(|e| e.as_ref()).map(|e| e.file.clone()).ok_or(Errno::EBADF)
+        self.fds
+            .get(fd as usize)
+            .and_then(|e| e.as_ref())
+            .map(|e| e.file.clone())
+            .ok_or(Errno::EBADF)
     }
 
     pub fn close(&mut self, fd: i32) -> KResult<()> {
@@ -187,11 +229,19 @@ impl FdTable {
     }
 
     pub fn cloexec(&self, fd: i32) -> KResult<bool> {
-        self.fds.get(fd as usize).and_then(|e| e.as_ref()).map(|e| e.cloexec).ok_or(Errno::EBADF)
+        self.fds
+            .get(fd as usize)
+            .and_then(|e| e.as_ref())
+            .map(|e| e.cloexec)
+            .ok_or(Errno::EBADF)
     }
 
     pub fn set_cloexec(&mut self, fd: i32, on: bool) -> KResult<()> {
-        let e = self.fds.get_mut(fd as usize).and_then(|e| e.as_mut()).ok_or(Errno::EBADF)?;
+        let e = self
+            .fds
+            .get_mut(fd as usize)
+            .and_then(|e| e.as_mut())
+            .ok_or(Errno::EBADF)?;
         e.cloexec = on;
         Ok(())
     }
@@ -204,12 +254,11 @@ impl FdTable {
         }
     }
 
-    pub fn close_all(&mut self) {
-        self.fds.clear();
-    }
-
     /// (fd, file) pairs for /proc/<pid>/fd.
     pub fn iter(&self) -> impl Iterator<Item = (i32, &Arc<OpenFile>)> {
-        self.fds.iter().enumerate().filter_map(|(i, e)| e.as_ref().map(|e| (i as i32, &e.file)))
+        self.fds
+            .iter()
+            .enumerate()
+            .filter_map(|(i, e)| e.as_ref().map(|e| (i as i32, &e.file)))
     }
 }

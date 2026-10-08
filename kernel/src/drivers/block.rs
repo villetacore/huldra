@@ -37,7 +37,13 @@ pub struct Disk {
 
 impl Disk {
     pub fn new(device: Arc<dyn BlockDevice>) -> Arc<Disk> {
-        Arc::new(Disk { device, cache: Mutex::new(Cache { sectors: BTreeMap::new(), order: VecDeque::new() }) })
+        Arc::new(Disk {
+            device,
+            cache: Mutex::new(Cache {
+                sectors: BTreeMap::new(),
+                order: VecDeque::new(),
+            }),
+        })
     }
 
     pub fn name(&self) -> &str {
@@ -48,7 +54,12 @@ impl Disk {
         self.device.sector_count() * SECTOR_SIZE as u64
     }
 
-    fn with_sector<R>(&self, cache: &mut Cache, lba: u64, f: impl FnOnce(&mut Vec<u8>, &mut bool) -> R) -> KResult<R> {
+    fn with_sector<R>(
+        &self,
+        cache: &mut Cache,
+        lba: u64,
+        f: impl FnOnce(&mut Vec<u8>, &mut bool) -> R,
+    ) -> KResult<R> {
         if !cache.sectors.contains_key(&lba) {
             if cache.sectors.len() >= CACHE_SECTORS {
                 if let Some(victim) = cache.order.pop_front() {
@@ -76,9 +87,14 @@ impl Disk {
         let mut done = 0;
         while done < buf.len() {
             let pos = offset + done as u64;
-            let (lba, within) = (pos / SECTOR_SIZE as u64, (pos % SECTOR_SIZE as u64) as usize);
+            let (lba, within) = (
+                pos / SECTOR_SIZE as u64,
+                (pos % SECTOR_SIZE as u64) as usize,
+            );
             let n = (SECTOR_SIZE - within).min(buf.len() - done);
-            self.with_sector(&mut cache, lba, |data, _| buf[done..done + n].copy_from_slice(&data[within..within + n]))?;
+            self.with_sector(&mut cache, lba, |data, _| {
+                buf[done..done + n].copy_from_slice(&data[within..within + n])
+            })?;
             done += n;
         }
         Ok(())
@@ -92,7 +108,10 @@ impl Disk {
         let mut done = 0;
         while done < buf.len() {
             let pos = offset + done as u64;
-            let (lba, within) = (pos / SECTOR_SIZE as u64, (pos % SECTOR_SIZE as u64) as usize);
+            let (lba, within) = (
+                pos / SECTOR_SIZE as u64,
+                (pos % SECTOR_SIZE as u64) as usize,
+            );
             let n = (SECTOR_SIZE - within).min(buf.len() - done);
             self.with_sector(&mut cache, lba, |data, dirty| {
                 data[within..within + n].copy_from_slice(&buf[done..done + n]);
@@ -160,7 +179,11 @@ pub fn register(device: Arc<dyn BlockDevice>, major: u32, minor: u32) {
     kinfo!("block: {} ({} MiB)", name, disk.size() >> 20);
     crate::fs::devfs::register(
         &name,
-        Arc::new(DiskNode { disk: disk.clone(), ino: crate::fs::devfs::dev_ino(), rdev: makedev(major, minor) }),
+        Arc::new(DiskNode {
+            disk: disk.clone(),
+            ino: crate::fs::devfs::dev_ino(),
+            rdev: makedev(major, minor),
+        }),
     );
     DISKS.lock().push(disk);
 }
@@ -168,7 +191,10 @@ pub fn register(device: Arc<dyn BlockDevice>, major: u32, minor: u32) {
 /// Finds the disk behind a device node path such as `/dev/hda`.
 pub fn disk_for_path(path: &str) -> KResult<Arc<Disk>> {
     let node = lookup(path)?;
-    let node = node.as_any().downcast_ref::<DiskNode>().ok_or(Errno::ENOTTY)?;
+    let node = node
+        .as_any()
+        .downcast_ref::<DiskNode>()
+        .ok_or(Errno::ENOTTY)?;
     Ok(node.disk.clone())
 }
 

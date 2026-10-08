@@ -4,7 +4,9 @@ use crate::{sys, Result};
 use core::arch::global_asm;
 use huldra_abi::signal::*;
 
-pub use huldra_abi::signal::{SIGCHLD, SIGINT, SIGKILL, SIGPIPE, SIGQUIT, SIGSEGV, SIGTERM, SIGUSR1, SIGUSR2};
+pub use huldra_abi::signal::{
+    SIGCHLD, SIGINT, SIGKILL, SIGPIPE, SIGQUIT, SIGSEGV, SIGTERM, SIGUSR1, SIGUSR2,
+};
 
 // Handlers return here, which asks the kernel to restore the interrupted context.
 global_asm!(

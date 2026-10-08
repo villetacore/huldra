@@ -6,10 +6,10 @@ pub mod wait;
 
 use crate::arch::context::Context;
 use crate::fs::FdTable;
+use crate::mm::kstack::KernelStack;
 use crate::proc::mm::MemorySpace;
 use crate::proc::signal::SignalState;
 use crate::proc::ProcState;
-use crate::mm::kstack::KernelStack;
 use crate::sync::SpinLock;
 use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
@@ -197,7 +197,8 @@ pub fn detach(task: &Arc<Task>) {
 
 /// Waits for a kernel thread to exit and returns its exit code.
 pub fn join(task: Arc<Task>) -> i32 {
-    task.exited.wait_uninterruptible(|| (task.state() == State::Zombie).then_some(()));
+    task.exited
+        .wait_uninterruptible(|| (task.state() == State::Zombie).then_some(()));
     TASKS.lock().remove(&task.pid);
     task.exit_code.load(Ordering::Acquire)
 }

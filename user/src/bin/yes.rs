@@ -8,7 +8,11 @@ huldra_user::main!(main);
 
 fn main() -> i32 {
     let args = &env::args()[1..];
-    let mut line = if args.is_empty() { String::from("y") } else { args.join(" ") };
+    let mut line = if args.is_empty() {
+        String::from("y")
+    } else {
+        args.join(" ")
+    };
     line.push('\n');
     let chunk = line.repeat(4096 / line.len() + 1);
     // Stops with EPIPE/SIGPIPE when the reader goes away.

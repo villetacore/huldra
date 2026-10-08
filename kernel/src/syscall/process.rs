@@ -50,7 +50,11 @@ pub fn setsid(_a: &mut Args) -> KResult<Ret> {
 }
 
 pub fn getsid(a: &mut Args) -> KResult<Ret> {
-    let t = if a.a0() == 0 { sched::current() } else { crate::task::lookup(a.a0() as u32).ok_or(Errno::ESRCH)? };
+    let t = if a.a0() == 0 {
+        sched::current()
+    } else {
+        crate::task::lookup(a.a0() as u32).ok_or(Errno::ESRCH)?
+    };
     let sid = t.proc.lock().sid;
     value(sid as u64)
 }

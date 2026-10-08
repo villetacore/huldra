@@ -16,23 +16,30 @@ struct FileDisk(RefCell<File>);
 impl Disk for FileDisk {
     fn read_at(&self, offset: u64, buf: &mut [u8]) -> huldra_ext2::Result<()> {
         let mut f = self.0.borrow_mut();
-        f.seek(SeekFrom::Start(offset)).map_err(|_| huldra_ext2::Error::Io)?;
+        f.seek(SeekFrom::Start(offset))
+            .map_err(|_| huldra_ext2::Error::Io)?;
         f.read_exact(buf).map_err(|_| huldra_ext2::Error::Io)
     }
 
     fn write_at(&self, offset: u64, buf: &[u8]) -> huldra_ext2::Result<()> {
         let mut f = self.0.borrow_mut();
-        f.seek(SeekFrom::Start(offset)).map_err(|_| huldra_ext2::Error::Io)?;
+        f.seek(SeekFrom::Start(offset))
+            .map_err(|_| huldra_ext2::Error::Io)?;
         f.write_all(buf).map_err(|_| huldra_ext2::Error::Io)
     }
 }
 
 fn now() -> u32 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as u32)
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs() as u32)
 }
 
 fn copy_tree(fs: &mut Ext2<FileDisk>, dir_ino: u32, src: &Path) -> Result {
-    let mut entries: Vec<_> = fs::read_dir(src).map_err(|e| e.to_string())?.flatten().collect();
+    let mut entries: Vec<_> = fs::read_dir(src)
+        .map_err(|e| e.to_string())?
+        .flatten()
+        .collect();
     entries.sort_by_key(|e| e.file_name());
     for e in entries {
         let name = e.file_name().to_string_lossy().into_owned();
@@ -53,7 +60,13 @@ fn copy_tree(fs: &mut Ext2<FileDisk>, dir_ino: u32, src: &Path) -> Result {
 
 /// Formats `image` and fills it with the contents of `source`.
 pub fn create_image(image: &Path, source: &Path) -> Result {
-    let file = OpenOptions::new().read(true).write(true).create(true).truncate(true).open(image).map_err(|e| e.to_string())?;
+    let file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(image)
+        .map_err(|e| e.to_string())?;
     file.set_len(DISK_SIZE).map_err(|e| e.to_string())?;
     let disk = FileDisk(RefCell::new(file));
     huldra_ext2::format(&disk, DISK_SIZE, "huldra", now()).map_err(|e| format!("mkfs: {e:?}"))?;
@@ -72,7 +85,10 @@ pub fn fsck(image: &Path) -> Result<bool> {
         let s = image.display().to_string().replace('\\', "/");
         let (drive, rest) = s.split_at(1);
         let wsl = format!("/mnt/{}{}", drive.to_lowercase(), &rest[1..]);
-        ("wsl", vec!["-e".into(), "/usr/sbin/e2fsck".into(), "-fn".into(), wsl])
+        (
+            "wsl",
+            vec!["-e".into(), "/usr/sbin/e2fsck".into(), "-fn".into(), wsl],
+        )
     } else {
         ("e2fsck", vec!["-fn".into(), image.display().to_string()])
     };
@@ -80,7 +96,8 @@ pub fn fsck(image: &Path) -> Result<bool> {
         Ok(o) => o,
         Err(_) => return Ok(false),
     };
-    let text = String::from_utf8_lossy(&output.stdout).into_owned() + &String::from_utf8_lossy(&output.stderr);
+    let text = String::from_utf8_lossy(&output.stdout).into_owned()
+        + &String::from_utf8_lossy(&output.stderr);
     if text.contains("not found") && !output.status.success() && output.status.code() == Some(127) {
         return Ok(false);
     }
@@ -88,14 +105,22 @@ pub fn fsck(image: &Path) -> Result<bool> {
         print!("{text}");
         Ok(true)
     } else {
-        Err(format!("e2fsck reports problems ({:?}):\n{text}", output.status.code()))
+        Err(format!(
+            "e2fsck reports problems ({:?}):\n{text}",
+            output.status.code()
+        ))
     }
 }
 
 /// Reads `path` from the image (used to check what the guest wrote).
 pub fn read_file(image: &Path, path: &str) -> Result<Vec<u8>> {
-    let file = OpenOptions::new().read(true).write(true).open(image).map_err(|e| e.to_string())?;
-    let mut fs = Ext2::open(FileDisk(RefCell::new(file)), now).map_err(|e| format!("mount: {e:?}"))?;
+    let file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(image)
+        .map_err(|e| e.to_string())?;
+    let mut fs =
+        Ext2::open(FileDisk(RefCell::new(file)), now).map_err(|e| format!("mount: {e:?}"))?;
     let mut ino = ROOT_INO;
     for comp in path.split('/').filter(|c| !c.is_empty()) {
         ino = fs.lookup(ino, comp).map_err(|e| format!("{path}: {e:?}"))?;

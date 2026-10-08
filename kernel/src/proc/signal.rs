@@ -27,12 +27,20 @@ const UNBLOCKABLE: u64 = sigbit(SIGKILL) | sigbit(SIGSTOP);
 
 impl SignalState {
     pub fn new() -> SignalState {
-        SignalState { pending: 0, blocked: 0, actions: [SigAction::default(); NSIG as usize] }
+        SignalState {
+            pending: 0,
+            blocked: 0,
+            actions: [SigAction::default(); NSIG as usize],
+        }
     }
 
     /// State inherited by a forked child (pending signals are not).
     pub fn fork(&self) -> SignalState {
-        SignalState { pending: 0, blocked: self.blocked, actions: self.actions }
+        SignalState {
+            pending: 0,
+            blocked: self.blocked,
+            actions: self.actions,
+        }
     }
 
     /// After exec: handlers reset to default, ignored stays ignored.
@@ -66,7 +74,10 @@ impl SignalState {
 
 fn default_ignored(sig: u32) -> bool {
     // Stop signals are ignored until job control is implemented.
-    matches!(sig, SIGCHLD | SIGCONT | SIGWINCH | SIGSTOP | SIGTSTP | SIGTTIN | SIGTTOU | 23)
+    matches!(
+        sig,
+        SIGCHLD | SIGCONT | SIGWINCH | SIGSTOP | SIGTSTP | SIGTTIN | SIGTTOU | 23
+    )
 }
 
 /// True if the current task has a signal that should interrupt a wait.
@@ -133,15 +144,27 @@ pub fn kill(pid: i64, sig: u32) -> KResult<()> {
     }
     let me = sched::current();
     let targets: alloc::vec::Vec<Arc<Task>> = if pid > 0 {
-        task::lookup(pid as Pid).filter(|t| t.is_user()).into_iter().collect()
+        task::lookup(pid as Pid)
+            .filter(|t| t.is_user())
+            .into_iter()
+            .collect()
     } else if pid == 0 {
         let pg = me.proc.lock().pgid;
-        task::all_tasks().into_iter().filter(|t| t.is_user() && t.proc.lock().pgid == pg).collect()
+        task::all_tasks()
+            .into_iter()
+            .filter(|t| t.is_user() && t.proc.lock().pgid == pg)
+            .collect()
     } else if pid == -1 {
-        task::all_tasks().into_iter().filter(|t| t.is_user() && t.pid != 1 && t.pid != me.pid).collect()
+        task::all_tasks()
+            .into_iter()
+            .filter(|t| t.is_user() && t.pid != 1 && t.pid != me.pid)
+            .collect()
     } else {
         let pg = (-pid) as Pid;
-        task::all_tasks().into_iter().filter(|t| t.is_user() && t.proc.lock().pgid == pg).collect()
+        task::all_tasks()
+            .into_iter()
+            .filter(|t| t.is_user() && t.proc.lock().pgid == pg)
+            .collect()
     };
     if targets.is_empty() {
         return Err(Errno::ESRCH);
@@ -240,7 +263,14 @@ fn setup_frame(me: &Arc<Task>, frame: &mut TrapFrame, sig: u32, action: &SigActi
     // Skip the red zone, then align so the handler starts like after a call.
     let frame_addr = (frame.rsp - 128 - size_of::<SignalFrame>() as u64) & !15;
     let ret_addr = frame_addr - 8;
-    write_user(frame_addr, &SignalFrame { regs: *frame, blocked, magic: FRAME_MAGIC })?;
+    write_user(
+        frame_addr,
+        &SignalFrame {
+            regs: *frame,
+            blocked,
+            magic: FRAME_MAGIC,
+        },
+    )?;
     write_user(ret_addr, &action.restorer)?;
 
     {

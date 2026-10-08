@@ -27,9 +27,23 @@ fn main() -> i32 {
             Ok(st) => {
                 let t = DateTime::from_unix(st.st_mtime);
                 println!("  File: {}", path);
-                println!("  Size: {:<12} Blocks: {:<8} {}", st.st_size, st.st_blocks, kind(st.st_mode));
-                println!("Device: {:<12} Inode: {:<9} Links: {}", st.st_dev, st.st_ino, st.st_nlink);
-                println!("Access: ({:04o}/{})  Uid: {}  Gid: {}", st.st_mode & 0o7777, mode_string(st.st_mode), st.st_uid, st.st_gid);
+                println!(
+                    "  Size: {:<12} Blocks: {:<8} {}",
+                    st.st_size,
+                    st.st_blocks,
+                    kind(st.st_mode)
+                );
+                println!(
+                    "Device: {:<12} Inode: {:<9} Links: {}",
+                    st.st_dev, st.st_ino, st.st_nlink
+                );
+                println!(
+                    "Access: ({:04o}/{})  Uid: {}  Gid: {}",
+                    st.st_mode & 0o7777,
+                    mode_string(st.st_mode),
+                    st.st_uid,
+                    st.st_gid
+                );
                 println!(
                     "Modify: {}-{:02}-{:02} {:02}:{:02}:{:02}",
                     t.year, t.month, t.day, t.hour, t.minute, t.second

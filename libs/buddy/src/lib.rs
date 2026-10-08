@@ -27,7 +27,13 @@ pub struct PageMeta {
 
 impl PageMeta {
     /// State of a frame that is not (yet) managed by the allocator.
-    pub const RESERVED: PageMeta = PageMeta { next: NONE, prev: NONE, order: 0, flags: FLAG_RESERVED, _reserved: 0 };
+    pub const RESERVED: PageMeta = PageMeta {
+        next: NONE,
+        prev: NONE,
+        order: 0,
+        flags: FLAG_RESERVED,
+        _reserved: 0,
+    };
 }
 
 pub struct BuddyAllocator<'a> {
@@ -42,7 +48,12 @@ impl<'a> BuddyAllocator<'a> {
     pub fn new(meta: &'a mut [PageMeta]) -> Self {
         assert!(meta.len() < NONE as usize);
         meta.fill(PageMeta::RESERVED);
-        BuddyAllocator { meta, heads: [NONE; MAX_ORDER + 1], free_frames: 0, managed_frames: 0 }
+        BuddyAllocator {
+            meta,
+            heads: [NONE; MAX_ORDER + 1],
+            free_frames: 0,
+            managed_frames: 0,
+        }
     }
 
     pub fn frame_count(&self) -> usize {
@@ -78,7 +89,13 @@ impl<'a> BuddyAllocator<'a> {
 
     fn push(&mut self, pfn: usize, order: usize) {
         let head = self.heads[order];
-        self.meta[pfn] = PageMeta { next: head, prev: NONE, order: order as u8, flags: FLAG_FREE, _reserved: 0 };
+        self.meta[pfn] = PageMeta {
+            next: head,
+            prev: NONE,
+            order: order as u8,
+            flags: FLAG_FREE,
+            _reserved: 0,
+        };
         if head != NONE {
             self.meta[head as usize].prev = pfn as u32;
         }
@@ -120,7 +137,10 @@ impl<'a> BuddyAllocator<'a> {
     /// Returns a block obtained from [`alloc`](Self::alloc) with the same order.
     pub fn free(&mut self, mut pfn: usize, mut order: usize) {
         assert!(pfn & ((1 << order) - 1) == 0, "misaligned free");
-        assert!(self.meta[pfn].flags & (FLAG_FREE | FLAG_RESERVED) == 0, "double free of frame {pfn}");
+        assert!(
+            self.meta[pfn].flags & (FLAG_FREE | FLAG_RESERVED) == 0,
+            "double free of frame {pfn}"
+        );
         self.free_frames += 1 << order;
         while order < MAX_ORDER {
             let buddy = pfn ^ (1 << order);
@@ -209,7 +229,9 @@ mod tests {
         let mut live: Vec<(usize, usize)> = Vec::new();
         let mut seed = 12345u64;
         let mut rand = || {
-            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             (seed >> 33) as usize
         };
         for _ in 0..20_000 {

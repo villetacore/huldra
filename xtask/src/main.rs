@@ -78,7 +78,13 @@ fn main() -> ExitCode {
             let img = target_dir().join("fsck-check.img");
             disk::create_image(&img, &root().join("diskfs"))
                 .and_then(|_| disk::fsck(&img))
-                .and_then(|ran| if ran { Ok(()) } else { Err("e2fsck not available".into()) })
+                .and_then(|ran| {
+                    if ran {
+                        Ok(())
+                    } else {
+                        Err("e2fsck not available".into())
+                    }
+                })
         }
         "help" | "--help" | "-h" => {
             print!("{USAGE}");
@@ -112,7 +118,10 @@ fn parse_options(args: &[String]) -> Result<Options> {
 }
 
 pub fn root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().to_path_buf()
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .to_path_buf()
 }
 
 fn profile_dir(options: &Options) -> &'static str {
@@ -133,7 +142,9 @@ fn cargo(args: &[&str], options: &Options) -> Result {
     if options.release {
         cmd.arg("--release");
     }
-    let status = cmd.status().map_err(|e| format!("failed to run cargo: {e}"))?;
+    let status = cmd
+        .status()
+        .map_err(|e| format!("failed to run cargo: {e}"))?;
     if !status.success() {
         return Err(format!("cargo {} failed", args.join(" ")));
     }
@@ -145,7 +156,16 @@ const SBIN: &[&str] = &["init", "mount", "umount", "reboot", "poweroff"];
 
 fn build_user() -> Result<Vec<image::ImageFile>> {
     let mut cmd = Command::new(env::var("CARGO").unwrap_or_else(|_| "cargo".into()));
-    cmd.current_dir(root()).args(["build", "-p", "huldra-user", "--bins", "--target", TARGET, "--profile", "user"]);
+    cmd.current_dir(root()).args([
+        "build",
+        "-p",
+        "huldra-user",
+        "--bins",
+        "--target",
+        TARGET,
+        "--profile",
+        "user",
+    ]);
     if !cmd.status().map_err(|e| e.to_string())?.success() {
         return Err("building user space failed".into());
     }
@@ -154,12 +174,25 @@ fn build_user() -> Result<Vec<image::ImageFile>> {
     let mut names: Vec<String> = fs::read_dir(root().join("user").join("src").join("bin"))
         .map_err(|e| e.to_string())?
         .flatten()
-        .filter_map(|e| e.file_name().to_str()?.strip_suffix(".rs").map(String::from))
+        .filter_map(|e| {
+            e.file_name()
+                .to_str()?
+                .strip_suffix(".rs")
+                .map(String::from)
+        })
         .collect();
     names.sort();
     for name in names {
-        let dir = if SBIN.contains(&name.as_str()) { "sbin" } else { "bin" };
-        files.push(image::ImageFile { dest: format!("{dir}/{name}"), source: out.join(&name), mode: 0o755 });
+        let dir = if SBIN.contains(&name.as_str()) {
+            "sbin"
+        } else {
+            "bin"
+        };
+        files.push(image::ImageFile {
+            dest: format!("{dir}/{name}"),
+            source: out.join(&name),
+            mode: 0o755,
+        });
     }
     Ok(files)
 }
@@ -177,8 +210,15 @@ pub fn build(options: &Options) -> Result<Artifacts> {
         disk::create_image(&disk_img, &root().join("diskfs"))?;
     }
 
-    cargo(&["build", "-p", "huldra-kernel", "--target", TARGET], options)?;
-    Ok(Artifacts { kernel: out.join("huldra"), initrd: Some(initrd), disk: Some(disk_img) })
+    cargo(
+        &["build", "-p", "huldra-kernel", "--target", TARGET],
+        options,
+    )?;
+    Ok(Artifacts {
+        kernel: out.join("huldra"),
+        initrd: Some(initrd),
+        disk: Some(disk_img),
+    })
 }
 
 fn test(options: &Options) -> Result {
@@ -206,7 +246,10 @@ fn test(options: &Options) -> Result {
     println!("==> checking the disk written by the guest");
     let note = disk::read_file(&test_disk, "/data/note")?;
     if note != b"persistent\n" {
-        return Err(format!("unexpected /data/note on disk: {:?}", String::from_utf8_lossy(&note)));
+        return Err(format!(
+            "unexpected /data/note on disk: {:?}",
+            String::from_utf8_lossy(&note)
+        ));
     }
     if !disk::fsck(&test_disk)? {
         println!("(e2fsck not available, skipped)");
@@ -223,10 +266,11 @@ fn lib_crates() -> Result<Vec<String>> {
     for e in entries.flatten() {
         let manifest = e.path().join("Cargo.toml");
         if let Ok(text) = fs::read_to_string(&manifest) {
-            if let Some(name) = text
-                .lines()
-                .find_map(|l| l.trim().strip_prefix("name = ").map(|n| n.trim_matches('"').to_string()))
-            {
+            if let Some(name) = text.lines().find_map(|l| {
+                l.trim()
+                    .strip_prefix("name = ")
+                    .map(|n| n.trim_matches('"').to_string())
+            }) {
                 names.push(name);
             }
         }
@@ -241,7 +285,9 @@ fn iso(options: &Options) -> Result {
     let grub = iso_root.join("boot").join("grub");
     fs::create_dir_all(&grub).map_err(|e| e.to_string())?;
     fs::copy(&a.kernel, iso_root.join("boot").join("huldra")).map_err(|e| e.to_string())?;
-    let mut cfg = String::from("set timeout=0\nset default=0\n\nmenuentry \"Huldra\" {\n    multiboot2 /boot/huldra\n");
+    let mut cfg = String::from(
+        "set timeout=0\nset default=0\n\nmenuentry \"Huldra\" {\n    multiboot2 /boot/huldra\n",
+    );
     if let Some(initrd) = &a.initrd {
         fs::copy(initrd, iso_root.join("boot").join("initrd.cpio")).map_err(|e| e.to_string())?;
         cfg.push_str("    module2 /boot/initrd.cpio initrd\n");
@@ -256,13 +302,33 @@ fn iso(options: &Options) -> Result {
             let (drive, rest) = s.split_at(1);
             format!("/mnt/{}{}", drive.to_lowercase(), &rest[1..])
         };
-        ("wsl", vec!["grub-mkrescue".into(), "-o".into(), wsl_path(&iso), wsl_path(&iso_root)])
+        (
+            "wsl",
+            vec![
+                "grub-mkrescue".into(),
+                "-o".into(),
+                wsl_path(&iso),
+                wsl_path(&iso_root),
+            ],
+        )
     } else {
-        ("grub-mkrescue", vec!["-o".into(), iso.display().to_string(), iso_root.display().to_string()])
+        (
+            "grub-mkrescue",
+            vec![
+                "-o".into(),
+                iso.display().to_string(),
+                iso_root.display().to_string(),
+            ],
+        )
     };
-    let status = Command::new(program).args(&args).status().map_err(|e| format!("{program}: {e}"))?;
+    let status = Command::new(program)
+        .args(&args)
+        .status()
+        .map_err(|e| format!("{program}: {e}"))?;
     if !status.success() {
-        return Err("grub-mkrescue failed (needs grub-pc-bin, grub-common, xorriso, mtools)".into());
+        return Err(
+            "grub-mkrescue failed (needs grub-pc-bin, grub-common, xorriso, mtools)".into(),
+        );
     }
     println!("iso: {}", iso.display());
     Ok(())

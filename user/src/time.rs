@@ -4,13 +4,17 @@ use crate::sys;
 use huldra_abi::{Timespec, CLOCK_MONOTONIC, CLOCK_REALTIME};
 
 pub fn sleep_ms(ms: u64) {
-    let ts = Timespec { tv_sec: (ms / 1000) as i64, tv_nsec: ((ms % 1000) * 1_000_000) as i64 };
+    let ts = Timespec {
+        tv_sec: (ms / 1000) as i64,
+        tv_nsec: ((ms % 1000) * 1_000_000) as i64,
+    };
     let _ = sys::nanosleep(&ts);
 }
 
 /// Milliseconds since boot.
 pub fn uptime_ms() -> u64 {
-    sys::clock_gettime(CLOCK_MONOTONIC).map_or(0, |t| t.tv_sec as u64 * 1000 + t.tv_nsec as u64 / 1_000_000)
+    sys::clock_gettime(CLOCK_MONOTONIC)
+        .map_or(0, |t| t.tv_sec as u64 * 1000 + t.tv_nsec as u64 / 1_000_000)
 }
 
 /// Seconds since the Unix epoch.
@@ -56,5 +60,7 @@ impl DateTime {
     }
 }
 
-pub const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+pub const MONTHS: [&str; 12] = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
 pub const WEEKDAYS: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];

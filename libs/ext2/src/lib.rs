@@ -109,7 +109,11 @@ impl Inode {
             *slot = get32(b, 40 + i * 4);
         }
         let mode = get16(b, 0);
-        let high = if mode & S_IFMT == S_IFREG { get32(b, 108) as u64 } else { 0 };
+        let high = if mode & S_IFMT == S_IFREG {
+            get32(b, 108) as u64
+        } else {
+            0
+        };
         Inode {
             mode,
             uid: get16(b, 2),
@@ -230,12 +234,19 @@ impl<D: Disk> Ext2<D> {
         }
         let rev = get32(&sb, 76);
         let (inode_size, first_ino, incompat, ro_compat) = if rev >= 1 {
-            (get16(&sb, 88) as u32, get32(&sb, 84), get32(&sb, 96), get32(&sb, 100))
+            (
+                get16(&sb, 88) as u32,
+                get32(&sb, 84),
+                get32(&sb, 96),
+                get32(&sb, 100),
+            )
         } else {
             (128, 11, 0, 0)
         };
         if incompat & !SUPPORTED_INCOMPAT != 0 {
-            return Err(Error::Unsupported("incompatible features (ext3 journal recovery, ext4 extents, ...)"));
+            return Err(Error::Unsupported(
+                "incompatible features (ext3 journal recovery, ext4 extents, ...)",
+            ));
         }
         if ro_compat & !SUPPORTED_RO_COMPAT != 0 {
             return Err(Error::Unsupported("read-only compatible features"));
@@ -249,7 +260,11 @@ impl<D: Disk> Ext2<D> {
         let first_data_block = get32(&sb, 20);
         let blocks_per_group = get32(&sb, 32);
         let inodes_per_group = get32(&sb, 40);
-        if blocks_per_group == 0 || inodes_per_group == 0 || inode_size < 128 || inode_size > block_size {
+        if blocks_per_group == 0
+            || inodes_per_group == 0
+            || inode_size < 128
+            || inode_size > block_size
+        {
             return Err(Error::Corrupt("geometry"));
         }
         let ngroups = (blocks_count - first_data_block).div_ceil(blocks_per_group) as usize;
@@ -369,9 +384,18 @@ impl<D: Disk> Ext2<D> {
     }
 
     fn free_block(&mut self, block: u32) -> Result<()> {
-        let rel = block.checked_sub(self.first_data_block).ok_or(Error::Corrupt("freeing a metadata block"))?;
-        let (g, i) = ((rel / self.blocks_per_group) as usize, (rel % self.blocks_per_group) as usize);
-        let bitmap_block = self.groups.get(g).ok_or(Error::Corrupt("block group"))?.block_bitmap;
+        let rel = block
+            .checked_sub(self.first_data_block)
+            .ok_or(Error::Corrupt("freeing a metadata block"))?;
+        let (g, i) = (
+            (rel / self.blocks_per_group) as usize,
+            (rel % self.blocks_per_group) as usize,
+        );
+        let bitmap_block = self
+            .groups
+            .get(g)
+            .ok_or(Error::Corrupt("block group"))?
+            .block_bitmap;
         let mut bitmap = self.read_block(bitmap_block)?;
         if bitmap[i / 8] & (1 << (i % 8)) == 0 {
             return Err(Error::Corrupt("double free of a block"));
@@ -392,9 +416,13 @@ impl<D: Disk> Ext2<D> {
             }
             let bitmap_block = self.groups[g].inode_bitmap;
             let mut bitmap = self.read_block(bitmap_block)?;
-            let first = if g == 0 { self.first_ino as usize - 1 } else { 0 };
-            if let Some(i) =
-                (first..self.inodes_per_group as usize).find(|&i| bitmap[i / 8] & (1 << (i % 8)) == 0)
+            let first = if g == 0 {
+                self.first_ino as usize - 1
+            } else {
+                0
+            };
+            if let Some(i) = (first..self.inodes_per_group as usize)
+                .find(|&i| bitmap[i / 8] & (1 << (i % 8)) == 0)
             {
                 bitmap[i / 8] |= 1 << (i % 8);
                 self.write_block(bitmap_block, &bitmap)?;
@@ -411,7 +439,10 @@ impl<D: Disk> Ext2<D> {
     }
 
     fn free_inode(&mut self, ino: u32, dir: bool) -> Result<()> {
-        let (g, i) = (((ino - 1) / self.inodes_per_group) as usize, ((ino - 1) % self.inodes_per_group) as usize);
+        let (g, i) = (
+            ((ino - 1) / self.inodes_per_group) as usize,
+            ((ino - 1) % self.inodes_per_group) as usize,
+        );
         let bitmap_block = self.groups[g].inode_bitmap;
         let mut bitmap = self.read_block(bitmap_block)?;
         bitmap[i / 8] &= !(1 << (i % 8));
@@ -461,7 +492,13 @@ impl<D: Disk> Ext2<D> {
     }
 
     /// Physical block holding file block `index`; allocates when `alloc`.
-    fn bmap(&mut self, inode: &mut Inode, group: usize, index: u64, alloc: bool) -> Result<Option<u32>> {
+    fn bmap(
+        &mut self,
+        inode: &mut Inode,
+        group: usize,
+        index: u64,
+        alloc: bool,
+    ) -> Result<Option<u32>> {
         let p = self.ptrs_per_block();
         let sectors_per_block = self.block_size / 512;
         if index < 12 {
@@ -515,7 +552,14 @@ impl<D: Disk> Ext2<D> {
 
     /// Frees the subtree at `ptr` (depth 0 = data block) for file blocks >= `start`.
     /// Returns true if `ptr` itself was freed.
-    fn free_tree(&mut self, inode: &mut Inode, ptr: u32, depth: u32, base: u64, start: u64) -> Result<bool> {
+    fn free_tree(
+        &mut self,
+        inode: &mut Inode,
+        ptr: u32,
+        depth: u32,
+        base: u64,
+        start: u64,
+    ) -> Result<bool> {
         let p = self.ptrs_per_block();
         let covered = p.pow(depth);
         if base + covered <= start {
@@ -528,7 +572,15 @@ impl<D: Disk> Ext2<D> {
             let child_span = p.pow(depth - 1);
             for i in 0..p as usize {
                 let child = get32(&entries, i * 4);
-                if child != 0 && self.free_tree(inode, child, depth - 1, base + i as u64 * child_span, start)? {
+                if child != 0
+                    && self.free_tree(
+                        inode,
+                        child,
+                        depth - 1,
+                        base + i as u64 * child_span,
+                        start,
+                    )?
+                {
                     put32(&mut entries, i * 4, 0);
                     changed = true;
                 }
@@ -581,7 +633,10 @@ impl<D: Disk> Ext2<D> {
             let within = (pos % bs) as usize;
             let n = (bs as usize - within).min(len - done);
             match self.bmap(&mut inode, 0, pos / bs, false)? {
-                Some(b) => self.disk.read_at(self.block_offset(b) + within as u64, &mut buf[done..done + n])?,
+                Some(b) => self.disk.read_at(
+                    self.block_offset(b) + within as u64,
+                    &mut buf[done..done + n],
+                )?,
                 None => buf[done..done + n].fill(0), // hole
             }
             done += n;
@@ -606,7 +661,10 @@ impl<D: Disk> Ext2<D> {
             let n = (bs as usize - within).min(data.len() - done);
             match self.bmap(&mut inode, group, pos / bs, true) {
                 Ok(Some(b)) => {
-                    if let Err(e) = self.disk.write_at(self.block_offset(b) + within as u64, &data[done..done + n]) {
+                    if let Err(e) = self
+                        .disk
+                        .write_at(self.block_offset(b) + within as u64, &data[done..done + n])
+                    {
                         break Err(e);
                     }
                 }
@@ -639,7 +697,10 @@ impl<D: Disk> Ext2<D> {
             if size % bs != 0 {
                 if let Some(b) = self.bmap(&mut inode, 0, size / bs, false)? {
                     let within = size % bs;
-                    self.disk.write_at(self.block_offset(b) + within, &vec![0u8; (bs - within) as usize])?;
+                    self.disk.write_at(
+                        self.block_offset(b) + within,
+                        &vec![0u8; (bs - within) as usize],
+                    )?;
                 }
             }
         }
@@ -691,7 +752,11 @@ impl<D: Disk> Ext2<D> {
         for (_, data) in self.dir_blocks(ino)? {
             for (_, e_ino, _, name, ft) in self.parse_entries(&data)? {
                 if e_ino != 0 && name != "." && name != ".." {
-                    entries.push(DirEntry { name, ino: e_ino, file_type: ft });
+                    entries.push(DirEntry {
+                        name,
+                        ino: e_ino,
+                        file_type: ft,
+                    });
                 }
             }
         }
@@ -737,7 +802,9 @@ impl<D: Disk> Ext2<D> {
         let mut inode = self.read_inode(dir)?;
         let group = self.group_of(dir);
         let index = inode.size / self.block_size as u64;
-        let b = self.bmap(&mut inode, group, index, true)?.ok_or(Error::NoSpace)?;
+        let b = self
+            .bmap(&mut inode, group, index, true)?
+            .ok_or(Error::NoSpace)?;
         let mut data = vec![0u8; self.block_size as usize];
         Self::write_entry(&mut data, 0, ino, self.block_size as usize, name, ft);
         self.write_block(b, &data)?;
@@ -777,12 +844,26 @@ impl<D: Disk> Ext2<D> {
         let group = self.group_of(parent);
         let ino = self.alloc_inode(group, dir)?;
         let now = self.now();
-        let mut inode = Inode { mode, links: if dir { 2 } else { 1 }, atime: now, ctime: now, mtime: now, ..Inode::default() };
+        let mut inode = Inode {
+            mode,
+            links: if dir { 2 } else { 1 },
+            atime: now,
+            ctime: now,
+            mtime: now,
+            ..Inode::default()
+        };
         if dir {
             let b = self.alloc_block(group)?;
             let mut data = vec![0u8; self.block_size as usize];
             Self::write_entry(&mut data, 0, ino, 12, ".", FT_DIR);
-            Self::write_entry(&mut data, 12, parent, self.block_size as usize - 12, "..", FT_DIR);
+            Self::write_entry(
+                &mut data,
+                12,
+                parent,
+                self.block_size as usize - 12,
+                "..",
+                FT_DIR,
+            );
             self.write_block(b, &data)?;
             inode.block[0] = b;
             inode.size = self.block_size as u64;
@@ -835,7 +916,13 @@ impl<D: Disk> Ext2<D> {
     }
 
     /// Moves `old_parent/old_name` to `new_parent/new_name`.
-    pub fn rename(&mut self, old_parent: u32, old_name: &str, new_parent: u32, new_name: &str) -> Result<()> {
+    pub fn rename(
+        &mut self,
+        old_parent: u32,
+        old_name: &str,
+        new_parent: u32,
+        new_name: &str,
+    ) -> Result<()> {
         check_name(new_name)?;
         let ino = self.lookup(old_parent, old_name)?;
         let inode = self.read_inode(ino)?;
@@ -857,10 +944,16 @@ impl<D: Disk> Ext2<D> {
         if inode.is_dir() && old_parent != new_parent {
             // Point ".." at the new parent and move the link count.
             let mut inode = inode;
-            let b = self.bmap(&mut inode, 0, 0, false)?.ok_or(Error::Corrupt("empty directory"))?;
+            let b = self
+                .bmap(&mut inode, 0, 0, false)?
+                .ok_or(Error::Corrupt("empty directory"))?;
             let mut data = self.read_block(b)?;
             let entries = self.parse_entries(&data)?;
-            let pos = entries.iter().find(|e| e.3 == "..").ok_or(Error::Corrupt("no .. entry"))?.0;
+            let pos = entries
+                .iter()
+                .find(|e| e.3 == "..")
+                .ok_or(Error::Corrupt("no .. entry"))?
+                .0;
             put32(&mut data, pos, new_parent);
             self.write_block(b, &data)?;
             let mut op = self.read_inode(old_parent)?;

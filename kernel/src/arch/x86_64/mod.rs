@@ -58,12 +58,6 @@ pub fn disable_interrupts() {
     unsafe { asm!("cli", options(nomem, nostack)) }
 }
 
-pub fn interrupts_enabled() -> bool {
-    let flags: u64;
-    unsafe { asm!("pushfq", "pop {}", out(reg) flags, options(nomem, preserves_flags)) }
-    flags & (1 << 9) != 0
-}
-
 /// Disables interrupts and returns whether they were enabled before.
 pub fn irq_save() -> bool {
     let flags: u64;
@@ -75,11 +69,6 @@ pub fn irq_restore(enabled: bool) {
     if enabled {
         enable_interrupts();
     }
-}
-
-/// Sleeps until the next interrupt.
-pub fn wait_for_interrupt() {
-    unsafe { asm!("hlt", options(nomem, nostack)) }
 }
 
 pub fn halt_forever() -> ! {

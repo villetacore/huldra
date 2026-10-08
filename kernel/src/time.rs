@@ -19,7 +19,10 @@ pub fn now() -> i64 {
 /// Wall-clock time as (seconds, nanoseconds).
 pub fn now_precise() -> (i64, i64) {
     let ms = uptime_ms();
-    (BOOT_EPOCH.load(Ordering::Relaxed) + (ms / 1000) as i64, ((ms % 1000) * 1_000_000) as i64)
+    (
+        BOOT_EPOCH.load(Ordering::Relaxed) + (ms / 1000) as i64,
+        ((ms % 1000) * 1_000_000) as i64,
+    )
 }
 
 /// Called from the timer interrupt.

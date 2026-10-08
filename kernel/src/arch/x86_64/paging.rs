@@ -98,7 +98,9 @@ pub struct PageTable {
 impl PageTable {
     /// Allocates an empty PML4.
     pub fn new() -> Option<PageTable> {
-        Some(PageTable { root: frame::alloc_zeroed()? })
+        Some(PageTable {
+            root: frame::alloc_zeroed()?,
+        })
     }
 
     /// # Safety
@@ -148,7 +150,12 @@ impl PageTable {
         Ok(*entry & ADDR_MASK)
     }
 
-    fn walk_create(&mut self, virt: u64, leaf_level: usize, user: bool) -> Result<&'static mut u64, MapError> {
+    fn walk_create(
+        &mut self,
+        virt: u64,
+        leaf_level: usize,
+        user: bool,
+    ) -> Result<&'static mut u64, MapError> {
         let mut t = self.root;
         for level in (leaf_level + 1..=4).rev() {
             t = Self::descend(&mut table(t)[index(virt, level)], true, user)?;

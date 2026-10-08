@@ -55,7 +55,9 @@ impl Context {
             rflags: RFLAGS_RESERVED,
             ret: kthread_trampoline as *const () as u64,
         };
-        Context { rsp: unsafe { push_switch_frame(stack_top - 16, frame) } }
+        Context {
+            rsp: unsafe { push_switch_frame(stack_top - 16, frame) },
+        }
     }
 
     /// Context that enters user mode with the register state `frame`.
@@ -73,7 +75,9 @@ impl Context {
                 rflags: RFLAGS_RESERVED,
                 ret: user_trampoline as *const () as u64,
             };
-            Context { rsp: push_switch_frame(tf, sf) }
+            Context {
+                rsp: push_switch_frame(tf, sf),
+            }
         }
     }
 

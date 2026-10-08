@@ -16,8 +16,11 @@ fn main() -> i32 {
     let dest_is_dir = fs::metadata(dest).map(|s| fs::is_dir(&s)).unwrap_or(false);
     let mut status = 0;
     for src in sources {
-        let target =
-            if dest_is_dir { fs::join(dest, src.rsplit('/').next().unwrap_or(src)) } else { String::from(dest) };
+        let target = if dest_is_dir {
+            fs::join(dest, src.rsplit('/').next().unwrap_or(src))
+        } else {
+            String::from(dest)
+        };
         if let Err(e) = fs::rename(src, &target) {
             eprintln!("mv: {}: {}", src, e);
             status = 1;

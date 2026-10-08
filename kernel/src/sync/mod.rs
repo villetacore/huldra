@@ -2,7 +2,7 @@
 
 mod mutex;
 
-pub use mutex::{Mutex, MutexGuard};
+pub use mutex::Mutex;
 
 use crate::arch;
 use core::cell::UnsafeCell;
@@ -23,7 +23,10 @@ unsafe impl<T: Send> Send for SpinLock<T> {}
 
 impl<T> SpinLock<T> {
     pub const fn new(value: T) -> Self {
-        SpinLock { locked: AtomicBool::new(false), data: UnsafeCell::new(value) }
+        SpinLock {
+            locked: AtomicBool::new(false),
+            data: UnsafeCell::new(value),
+        }
     }
 
     pub fn lock(&self) -> SpinLockGuard<'_, T> {
@@ -36,10 +39,6 @@ impl<T> SpinLock<T> {
             core::hint::spin_loop();
         }
         SpinLockGuard { lock: self, irq }
-    }
-
-    pub fn is_locked(&self) -> bool {
-        self.locked.load(Ordering::Relaxed)
     }
 
     /// Forcibly releases the lock. Only for panic/fatal paths.
@@ -88,11 +87,18 @@ unsafe impl<T: Send> Send for Once<T> {}
 
 impl<T> Once<T> {
     pub const fn new() -> Self {
-        Once { state: AtomicU8::new(INCOMPLETE), value: UnsafeCell::new(MaybeUninit::uninit()) }
+        Once {
+            state: AtomicU8::new(INCOMPLETE),
+            value: UnsafeCell::new(MaybeUninit::uninit()),
+        }
     }
 
     pub fn call_once(&self, f: impl FnOnce() -> T) -> &T {
-        if self.state.compare_exchange(INCOMPLETE, RUNNING, Ordering::Acquire, Ordering::Acquire).is_ok() {
+        if self
+            .state
+            .compare_exchange(INCOMPLETE, RUNNING, Ordering::Acquire, Ordering::Acquire)
+            .is_ok()
+        {
             unsafe { (*self.value.get()).write(f()) };
             self.state.store(COMPLETE, Ordering::Release);
         }
@@ -103,7 +109,8 @@ impl<T> Once<T> {
     }
 
     pub fn get(&self) -> Option<&T> {
-        (self.state.load(Ordering::Acquire) == COMPLETE).then(|| unsafe { (*self.value.get()).assume_init_ref() })
+        (self.state.load(Ordering::Acquire) == COMPLETE)
+            .then(|| unsafe { (*self.value.get()).assume_init_ref() })
     }
 
     /// Returns the value; panics if it was not initialized yet.

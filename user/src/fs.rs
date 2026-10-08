@@ -22,7 +22,9 @@ impl File {
     }
 
     pub fn open_with(path: &str, flags: u32, mode: u32) -> Result<File> {
-        Ok(File { fd: sys::open(path, flags | O_CLOEXEC, mode)? })
+        Ok(File {
+            fd: sys::open(path, flags | O_CLOEXEC, mode)?,
+        })
     }
 
     pub fn fd(&self) -> i32 {
@@ -119,7 +121,11 @@ pub fn read_dir(path: &str) -> Result<Vec<DirEntry>> {
             if d.name == b"." || d.name == b".." {
                 continue;
             }
-            entries.push(DirEntry { name: String::from_utf8_lossy(d.name).into_owned(), ino: d.ino, d_type: d.d_type });
+            entries.push(DirEntry {
+                name: String::from_utf8_lossy(d.name).into_owned(),
+                ino: d.ino,
+                d_type: d.d_type,
+            });
         }
     }
     entries.sort_by(|a, b| a.name.cmp(&b.name));

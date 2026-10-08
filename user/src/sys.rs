@@ -11,7 +11,15 @@ use huldra_abi::{Timespec, Utsname};
 /// # Safety
 /// Raw system call: arguments must be valid for the call.
 #[inline(always)]
-pub unsafe fn syscall6(n: usize, a0: usize, a1: usize, a2: usize, a3: usize, a4: usize, a5: usize) -> isize {
+pub unsafe fn syscall6(
+    n: usize,
+    a0: usize,
+    a1: usize,
+    a2: usize,
+    a3: usize,
+    a4: usize,
+    a5: usize,
+) -> isize {
     let ret: isize;
     asm!(
         "syscall",
@@ -68,7 +76,8 @@ pub fn write(fd: i32, buf: &[u8]) -> Result<usize> {
 
 pub fn open(path: &str, flags: u32, mode: u32) -> Result<i32> {
     let p = CString::new(path);
-    check(unsafe { syscall3(nr::OPEN, p.as_ptr(), flags as usize, mode as usize) }).map(|fd| fd as i32)
+    check(unsafe { syscall3(nr::OPEN, p.as_ptr(), flags as usize, mode as usize) })
+        .map(|fd| fd as i32)
 }
 
 pub fn close(fd: i32) -> Result<()> {
@@ -89,11 +98,29 @@ pub fn fstat(fd: i32) -> Result<Stat> {
 }
 
 pub fn lseek(fd: i32, offset: i64, whence: u32) -> Result<u64> {
-    check(unsafe { syscall3(nr::LSEEK, fd as usize, offset as usize, whence as usize) }).map(|v| v as u64)
+    check(unsafe { syscall3(nr::LSEEK, fd as usize, offset as usize, whence as usize) })
+        .map(|v| v as u64)
 }
 
-pub fn mmap(addr: usize, len: usize, prot: u32, flags: u32, fd: i32, offset: usize) -> Result<usize> {
-    check(unsafe { syscall6(nr::MMAP, addr, len, prot as usize, flags as usize, fd as isize as usize, offset) })
+pub fn mmap(
+    addr: usize,
+    len: usize,
+    prot: u32,
+    flags: u32,
+    fd: i32,
+    offset: usize,
+) -> Result<usize> {
+    check(unsafe {
+        syscall6(
+            nr::MMAP,
+            addr,
+            len,
+            prot as usize,
+            flags as usize,
+            fd as isize as usize,
+            offset,
+        )
+    })
 }
 
 pub fn munmap(addr: usize, len: usize) -> Result<()> {
@@ -116,9 +143,23 @@ pub fn sigaction(sig: u32, act: Option<&SigAction>, old: Option<&mut SigAction>)
 
 pub fn sigprocmask(how: u32, set: Option<u64>) -> Result<u64> {
     let set_storage = set.unwrap_or(0);
-    let set_ptr = if set.is_some() { &set_storage as *const u64 as usize } else { 0 };
+    let set_ptr = if set.is_some() {
+        &set_storage as *const u64 as usize
+    } else {
+        0
+    };
     let mut old = 0u64;
-    check(unsafe { syscall6(nr::RT_SIGPROCMASK, how as usize, set_ptr, &mut old as *mut u64 as usize, 8, 0, 0) })?;
+    check(unsafe {
+        syscall6(
+            nr::RT_SIGPROCMASK,
+            how as usize,
+            set_ptr,
+            &mut old as *mut u64 as usize,
+            8,
+            0,
+            0,
+        )
+    })?;
     Ok(old)
 }
 
@@ -146,8 +187,15 @@ pub fn fcntl(fd: i32, cmd: u32, arg: usize) -> Result<usize> {
 
 pub fn nanosleep(ts: &Timespec) -> Result<()> {
     let mut rem = Timespec::default();
-    check(unsafe { syscall3(nr::NANOSLEEP, ts as *const Timespec as usize, &mut rem as *mut Timespec as usize, 0) })
-        .map(drop)
+    check(unsafe {
+        syscall3(
+            nr::NANOSLEEP,
+            ts as *const Timespec as usize,
+            &mut rem as *mut Timespec as usize,
+            0,
+        )
+    })
+    .map(drop)
 }
 
 pub fn getpid() -> u32 {
@@ -165,7 +213,15 @@ pub fn fork() -> Result<u32> {
 /// `argv`/`envp` must be NULL-terminated arrays of C string pointers.
 pub fn execve(path: &str, argv: &[usize], envp: &[usize]) -> Result<()> {
     let p = CString::new(path);
-    check(unsafe { syscall3(nr::EXECVE, p.as_ptr(), argv.as_ptr() as usize, envp.as_ptr() as usize) }).map(drop)
+    check(unsafe {
+        syscall3(
+            nr::EXECVE,
+            p.as_ptr(),
+            argv.as_ptr() as usize,
+            envp.as_ptr() as usize,
+        )
+    })
+    .map(drop)
 }
 
 pub fn exit(code: i32) -> ! {
@@ -175,7 +231,17 @@ pub fn exit(code: i32) -> ! {
 
 pub fn wait4(pid: i32, options: u32) -> Result<(u32, i32)> {
     let mut status = 0i32;
-    let r = check(unsafe { syscall6(nr::WAIT4, pid as isize as usize, &mut status as *mut i32 as usize, options as usize, 0, 0, 0) })?;
+    let r = check(unsafe {
+        syscall6(
+            nr::WAIT4,
+            pid as isize as usize,
+            &mut status as *mut i32 as usize,
+            options as usize,
+            0,
+            0,
+            0,
+        )
+    })?;
     Ok((r as u32, status))
 }
 
@@ -190,7 +256,14 @@ pub fn uname() -> Result<Utsname> {
 }
 
 pub fn getdents64(fd: i32, buf: &mut [u8]) -> Result<usize> {
-    check(unsafe { syscall3(nr::GETDENTS64, fd as usize, buf.as_mut_ptr() as usize, buf.len()) })
+    check(unsafe {
+        syscall3(
+            nr::GETDENTS64,
+            fd as usize,
+            buf.as_mut_ptr() as usize,
+            buf.len(),
+        )
+    })
 }
 
 pub fn getcwd() -> Result<alloc::string::String> {
@@ -242,8 +315,23 @@ pub fn setsid() -> Result<u32> {
 }
 
 pub fn mount(source: &str, target: &str, fstype: &str, flags: u64) -> Result<()> {
-    let (s, t, f) = (CString::new(source), CString::new(target), CString::new(fstype));
-    check(unsafe { syscall6(nr::MOUNT, s.as_ptr(), t.as_ptr(), f.as_ptr(), flags as usize, 0, 0) }).map(drop)
+    let (s, t, f) = (
+        CString::new(source),
+        CString::new(target),
+        CString::new(fstype),
+    );
+    check(unsafe {
+        syscall6(
+            nr::MOUNT,
+            s.as_ptr(),
+            t.as_ptr(),
+            f.as_ptr(),
+            flags as usize,
+            0,
+            0,
+        )
+    })
+    .map(drop)
 }
 
 pub fn umount(target: &str) -> Result<()> {
@@ -253,13 +341,27 @@ pub fn umount(target: &str) -> Result<()> {
 
 pub fn reboot(cmd: u32) -> Result<()> {
     use huldra_abi::{LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2};
-    check(unsafe { syscall3(nr::REBOOT, LINUX_REBOOT_MAGIC1 as usize, LINUX_REBOOT_MAGIC2 as usize, cmd as usize) })
-        .map(drop)
+    check(unsafe {
+        syscall3(
+            nr::REBOOT,
+            LINUX_REBOOT_MAGIC1 as usize,
+            LINUX_REBOOT_MAGIC2 as usize,
+            cmd as usize,
+        )
+    })
+    .map(drop)
 }
 
 pub fn clock_gettime(clock: i32) -> Result<Timespec> {
     let mut ts = Timespec::default();
-    check(unsafe { syscall3(nr::CLOCK_GETTIME, clock as usize, &mut ts as *mut Timespec as usize, 0) })?;
+    check(unsafe {
+        syscall3(
+            nr::CLOCK_GETTIME,
+            clock as usize,
+            &mut ts as *mut Timespec as usize,
+            0,
+        )
+    })?;
     Ok(ts)
 }
 

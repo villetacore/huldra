@@ -81,7 +81,9 @@ fn echo_char(t: &Termios, c: u8) {
 
 /// Feeds one input byte from a keyboard or serial interrupt.
 pub fn input(c: u8) {
-    let Some(tty) = CONSOLE.lock().clone() else { return };
+    let Some(tty) = CONSOLE.lock().clone() else {
+        return;
+    };
     tty.receive(c);
 }
 
@@ -95,7 +97,10 @@ impl Tty {
                 c = b'\n';
             }
             if t.c_lflag & ISIG != 0 && (c == t.c_cc[VINTR] || c == t.c_cc[VQUIT]) {
-                signal = Some((if c == t.c_cc[VINTR] { SIGINT } else { SIGQUIT }, s.foreground));
+                signal = Some((
+                    if c == t.c_cc[VINTR] { SIGINT } else { SIGQUIT },
+                    s.foreground,
+                ));
                 s.line.clear();
                 echo_char(&t, c);
                 if t.c_lflag & ECHO != 0 {
@@ -240,7 +245,15 @@ impl Inode for Tty {
             }
             TIOCSCTTY => Ok(0),
             TIOCGWINSZ => {
-                write_user(arg, &Winsize { ws_row: 25, ws_col: 80, ws_xpixel: 0, ws_ypixel: 0 })?;
+                write_user(
+                    arg,
+                    &Winsize {
+                        ws_row: 25,
+                        ws_col: 80,
+                        ws_xpixel: 0,
+                        ws_ypixel: 0,
+                    },
+                )?;
                 Ok(0)
             }
             FIONREAD => {

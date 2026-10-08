@@ -19,7 +19,12 @@ pub struct PerCpu {
     pub cpu_id: u32,
 }
 
-static mut BSP: PerCpu = PerCpu { self_ptr: 0, kernel_rsp: 0, user_rsp: 0, cpu_id: 0 };
+static mut BSP: PerCpu = PerCpu {
+    self_ptr: 0,
+    kernel_rsp: 0,
+    user_rsp: 0,
+    cpu_id: 0,
+};
 
 pub fn init() {
     unsafe {
@@ -32,7 +37,9 @@ pub fn init() {
 
 fn this_cpu() -> *mut PerCpu {
     let p: u64;
-    unsafe { core::arch::asm!("mov {}, gs:[0]", out(reg) p, options(nostack, preserves_flags, readonly)) };
+    unsafe {
+        core::arch::asm!("mov {}, gs:[0]", out(reg) p, options(nostack, preserves_flags, readonly))
+    };
     p as *mut PerCpu
 }
 

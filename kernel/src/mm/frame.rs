@@ -16,7 +16,10 @@ const EARLY_LIMIT: u64 = 4 << 30;
 static BUDDY: SpinLock<Option<BuddyAllocator<'static>>> = SpinLock::new(None);
 
 fn with<R>(f: impl FnOnce(&mut BuddyAllocator<'static>) -> R) -> R {
-    f(BUDDY.lock().as_mut().expect("frame allocator not initialized"))
+    f(BUDDY
+        .lock()
+        .as_mut()
+        .expect("frame allocator not initialized"))
 }
 
 /// Calls `f(start, end)` for the parts of `[start, end)` not covered by `holes`.
@@ -63,26 +66,35 @@ pub fn init(boot: &BootInfo) {
     let mut meta_at = None;
     for r in boot.memory.iter().filter(|r| r.is_usable()) {
         let end = (r.base + r.len).min(EARLY_LIMIT);
-        for_each_gap(align_up(r.base, PAGE_SIZE), align_down(end, PAGE_SIZE), &holes[..nholes], |s, e| {
-            if meta_at.is_none() && e - s >= meta_bytes {
-                meta_at = Some(s);
-            }
-        });
+        for_each_gap(
+            align_up(r.base, PAGE_SIZE),
+            align_down(end, PAGE_SIZE),
+            &holes[..nholes],
+            |s, e| {
+                if meta_at.is_none() && e - s >= meta_bytes {
+                    meta_at = Some(s);
+                }
+            },
+        );
     }
     let meta_at = meta_at.expect("no room for the page frame metadata");
     holes[nholes] = (meta_at, meta_at + meta_bytes);
     nholes += 1;
 
-    let meta = unsafe { core::slice::from_raw_parts_mut(phys_to_virt(meta_at) as *mut PageMeta, max_pfn) };
+    let meta =
+        unsafe { core::slice::from_raw_parts_mut(phys_to_virt(meta_at) as *mut PageMeta, max_pfn) };
     let mut buddy = BuddyAllocator::new(meta);
     for r in boot.memory.iter().filter(|r| r.is_usable()) {
         let end = (r.base + r.len).min(EARLY_LIMIT);
         if r.base >= end {
             continue;
         }
-        for_each_gap(align_up(r.base, PAGE_SIZE), align_down(end, PAGE_SIZE), &holes[..nholes], |s, e| {
-            buddy.add_range((s / PAGE_SIZE) as usize, (e / PAGE_SIZE) as usize)
-        });
+        for_each_gap(
+            align_up(r.base, PAGE_SIZE),
+            align_down(end, PAGE_SIZE),
+            &holes[..nholes],
+            |s, e| buddy.add_range((s / PAGE_SIZE) as usize, (e / PAGE_SIZE) as usize),
+        );
     }
     *BUDDY.lock() = Some(buddy);
 }
@@ -134,9 +146,4 @@ pub fn free(phys: u64) {
 /// Returns (free, managed) frame counts.
 pub fn stats() -> (usize, usize) {
     with(|b| (b.free_frames(), b.managed_frames()))
-}
-
-/// Free block counts per order.
-pub fn free_blocks() -> [usize; huldra_buddy::MAX_ORDER + 1] {
-    with(|b| b.free_blocks())
 }

@@ -15,7 +15,9 @@ pub const EFER_SCE: u64 = 1 << 0;
 
 pub fn rdmsr(msr: u32) -> u64 {
     let (lo, hi): (u32, u32);
-    unsafe { asm!("rdmsr", in("ecx") msr, out("eax") lo, out("edx") hi, options(nomem, nostack, preserves_flags)) }
+    unsafe {
+        asm!("rdmsr", in("ecx") msr, out("eax") lo, out("edx") hi, options(nomem, nostack, preserves_flags))
+    }
     (hi as u64) << 32 | lo as u64
 }
 
@@ -54,7 +56,7 @@ pub fn invlpg(addr: u64) {
 }
 
 pub fn has_nx() -> bool {
-    unsafe { __cpuid(0x8000_0000).eax >= 0x8000_0001 && __cpuid(0x8000_0001).edx & (1 << 20) != 0 }
+    __cpuid(0x8000_0000).eax >= 0x8000_0001 && __cpuid(0x8000_0001).edx & (1 << 20) != 0
 }
 
 /// Enables global pages (kernel mappings survive CR3 switches in the TLB).
@@ -74,7 +76,7 @@ pub fn rdtsc() -> u64 {
 pub fn cpuinfo() -> alloc::string::String {
     use alloc::string::String;
     use core::fmt::Write;
-    let regs = |leaf: u32| unsafe { __cpuid(leaf) };
+    let regs = __cpuid;
     let mut vendor = [0u8; 12];
     let v = regs(0);
     for (i, r) in [v.ebx, v.edx, v.ecx].iter().enumerate() {
@@ -115,10 +117,20 @@ pub fn cpuinfo() -> alloc::string::String {
     }
     let mut s = String::new();
     let _ = writeln!(s, "processor\t: 0");
-    let _ = writeln!(s, "vendor_id\t: {}", core::str::from_utf8(&vendor).unwrap_or("?"));
+    let _ = writeln!(
+        s,
+        "vendor_id\t: {}",
+        core::str::from_utf8(&vendor).unwrap_or("?")
+    );
     let _ = writeln!(s, "cpu family\t: {}", (f.eax >> 8) & 0xF);
     let _ = writeln!(s, "model\t\t: {}", (f.eax >> 4) & 0xF);
-    let _ = writeln!(s, "model name\t: {}", core::str::from_utf8(&brand).unwrap_or("?").trim_matches(|c| c == '\0' || c == ' '));
+    let _ = writeln!(
+        s,
+        "model name\t: {}",
+        core::str::from_utf8(&brand)
+            .unwrap_or("?")
+            .trim_matches(|c| c == '\0' || c == ' ')
+    );
     let _ = writeln!(s, "stepping\t: {}", f.eax & 0xF);
     let _ = writeln!(s, "flags\t\t: {}", flags.trim_end());
     s

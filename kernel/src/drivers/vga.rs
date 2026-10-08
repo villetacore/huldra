@@ -31,7 +31,12 @@ fn buffer() -> *mut u16 {
 
 impl Vga {
     pub const fn new() -> Self {
-        Vga { col: 0, row: 0, attr: DEFAULT_ATTR, escape: Escape::None }
+        Vga {
+            col: 0,
+            row: 0,
+            attr: DEFAULT_ATTR,
+            escape: Escape::None,
+        }
     }
 
     fn cell(&self, c: u8) -> u16 {
@@ -49,24 +54,27 @@ impl Vga {
         }
     }
 
-    pub fn clear(&mut self) {
-        self.clear_range(0, WIDTH * HEIGHT);
-        self.col = 0;
-        self.row = 0;
-        self.update_cursor();
-    }
-
     pub fn put_char(&mut self, c: char) {
         match core::mem::replace(&mut self.escape, Escape::None) {
             Escape::None if c == '\x1b' => self.escape = Escape::Esc,
             Escape::None if c.is_ascii() => self.put_byte(c as u8),
             Escape::None => self.put_byte(0xFE), // ■ for anything outside ASCII
-            Escape::Esc if c == '[' => self.escape = Escape::Csi { params: [0; 4], count: 0 },
+            Escape::Esc if c == '[' => {
+                self.escape = Escape::Csi {
+                    params: [0; 4],
+                    count: 0,
+                }
+            }
             Escape::Esc => {}
-            Escape::Csi { mut params, mut count } => match c {
+            Escape::Csi {
+                mut params,
+                mut count,
+            } => match c {
                 '0'..='9' => {
                     let i = count.min(3);
-                    params[i] = params[i].saturating_mul(10).saturating_add(c as u16 - '0' as u16);
+                    params[i] = params[i]
+                        .saturating_mul(10)
+                        .saturating_add(c as u16 - '0' as u16);
                     self.escape = Escape::Csi { params, count };
                 }
                 ';' => {

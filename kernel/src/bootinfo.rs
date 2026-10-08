@@ -74,7 +74,9 @@ impl BootInfo {
 
     /// Value of `key=value` on the command line.
     pub fn option(&self, key: &str) -> Option<&str> {
-        self.cmdline.split_whitespace().find_map(|w| w.strip_prefix(key)?.strip_prefix('='))
+        self.cmdline
+            .split_whitespace()
+            .find_map(|w| w.strip_prefix(key)?.strip_prefix('='))
     }
 }
 
@@ -100,7 +102,10 @@ unsafe fn c_string<const N: usize>(phys: u64) -> ArrayString<N> {
     while len < N && read::<u8>(phys + len as u64) != 0 {
         len += 1;
     }
-    ArrayString::from_bytes(core::slice::from_raw_parts(phys_to_virt(phys) as *const u8, len))
+    ArrayString::from_bytes(core::slice::from_raw_parts(
+        phys_to_virt(phys) as *const u8,
+        len,
+    ))
 }
 
 /// Extracts the RSDT/XSDT address from an RSDP structure.
@@ -153,12 +158,18 @@ unsafe fn parse_multiboot2(info: u64) -> BootInfo {
                 let entry_size = read::<u32>(tag + 8) as u64;
                 let mut entry = tag + 16;
                 while entry_size >= 24 && entry + entry_size <= tag + size {
-                    boot.memory.push(MemRegion { base: read(entry), len: read(entry + 8), kind: read(entry + 16) });
+                    boot.memory.push(MemRegion {
+                        base: read(entry),
+                        len: read(entry + 8),
+                        kind: read(entry + 16),
+                    });
                     entry += entry_size;
                 }
             }
             // ACPI old/new RSDP: the tag holds a copy of the structure.
-            14 | 15 if boot.acpi_root.is_none() || kind == 15 => boot.acpi_root = acpi_root(tag + 8),
+            14 | 15 if boot.acpi_root.is_none() || kind == 15 => {
+                boot.acpi_root = acpi_root(tag + 8)
+            }
             _ => {}
         }
         tag += (size + 7) & !7;
@@ -180,14 +191,22 @@ unsafe fn parse_pvh(info: u64) -> BootInfo {
     for i in 0..nr_modules {
         let m = modlist + i * 32;
         let start = read::<u64>(m);
-        boot.modules.push(Module { start, end: start + read::<u64>(m + 8), cmdline: c_string(read::<u64>(m + 16)) });
+        boot.modules.push(Module {
+            start,
+            end: start + read::<u64>(m + 8),
+            cmdline: c_string(read::<u64>(m + 16)),
+        });
     }
     if version >= 1 {
         let map = read::<u64>(info + 40);
         let entries = read::<u32>(info + 48) as u64;
         for i in 0..entries {
             let e = map + i * 24;
-            boot.memory.push(MemRegion { base: read(e), len: read(e + 8), kind: read(e + 16) });
+            boot.memory.push(MemRegion {
+                base: read(e),
+                len: read(e + 8),
+                kind: read(e + 16),
+            });
         }
     }
     boot

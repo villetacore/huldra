@@ -37,11 +37,15 @@ pub fn format<D: Disk>(disk: &D, size: u64, volume_name: &str, now: u32) -> Resu
     let mut ngroups = (blocks_count - first_data_block).div_ceil(blocks_per_group);
     let total_inodes = (blocks_count / 4).max(64);
     let inodes_per_block = BLOCK_SIZE / INODE_SIZE;
-    let inodes_per_group = total_inodes.div_ceil(ngroups).next_multiple_of(inodes_per_block).clamp(16, 8 * BLOCK_SIZE);
+    let inodes_per_group = total_inodes
+        .div_ceil(ngroups)
+        .next_multiple_of(inodes_per_block)
+        .clamp(16, 8 * BLOCK_SIZE);
     let inode_table_blocks = inodes_per_group / inodes_per_block;
     let gdt_blocks = (ngroups * 32).div_ceil(BLOCK_SIZE);
 
-    let overhead = |g: u32| (if has_superblock(g) { 1 + gdt_blocks } else { 0 }) + 2 + inode_table_blocks;
+    let overhead =
+        |g: u32| (if has_superblock(g) { 1 + gdt_blocks } else { 0 }) + 2 + inode_table_blocks;
     // Drop a last group too small to hold its own metadata.
     let last_size = blocks_count - first_data_block - (ngroups - 1) * blocks_per_group;
     if ngroups > 1 && last_size < overhead(ngroups - 1) + 16 {
@@ -61,7 +65,12 @@ pub fn format<D: Disk>(disk: &D, size: u64, volume_name: &str, now: u32) -> Resu
     let layouts: Vec<Layout> = (0..ngroups)
         .map(|g| {
             let meta = group_start(g) + if has_superblock(g) { 1 + gdt_blocks } else { 0 };
-            Layout { block_bitmap: meta, inode_bitmap: meta + 1, inode_table: meta + 2, used: overhead(g) }
+            Layout {
+                block_bitmap: meta,
+                inode_bitmap: meta + 1,
+                inode_table: meta + 2,
+                used: overhead(g),
+            }
         })
         .collect();
 
@@ -124,7 +133,13 @@ pub fn format<D: Disk>(disk: &D, size: u64, volume_name: &str, now: u32) -> Resu
     };
     entry(&mut block, 0, ROOT_INO, 12, ".");
     entry(&mut block, 12, ROOT_INO, 12, "..");
-    entry(&mut block, 24, LOST_FOUND_INO, BLOCK_SIZE as usize - 24, "lost+found");
+    entry(
+        &mut block,
+        24,
+        LOST_FOUND_INO,
+        BLOCK_SIZE as usize - 24,
+        "lost+found",
+    );
     disk.write_at(root_block as u64 * bs, &block)?;
     let mut block = vec![0u8; BLOCK_SIZE as usize];
     entry(&mut block, 0, LOST_FOUND_INO, 12, ".");
@@ -149,7 +164,11 @@ pub fn format<D: Disk>(disk: &D, size: u64, volume_name: &str, now: u32) -> Resu
     };
     root.block[0] = root_block;
     write_inode(ROOT_INO, &root)?;
-    let mut lf = Inode { mode: S_IFDIR | 0o700, links: 2, ..root };
+    let mut lf = Inode {
+        mode: S_IFDIR | 0o700,
+        links: 2,
+        ..root
+    };
     lf.block[0] = lost_found_block;
     write_inode(LOST_FOUND_INO, &lf)?;
 
@@ -183,7 +202,9 @@ pub fn format<D: Disk>(disk: &D, size: u64, volume_name: &str, now: u32) -> Resu
     let mut uuid = [0u8; 16];
     let mut seed = now as u64 ^ 0x9E37_79B9_7F4A_7C15 ^ size;
     for b in uuid.iter_mut() {
-        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        seed = seed
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         *b = (seed >> 56) as u8;
     }
     uuid[6] = (uuid[6] & 0x0F) | 0x40; // version 4

@@ -14,20 +14,43 @@ pub struct ImageFile {
 /// Collects every file below `dir` (sorted, so the archive is reproducible).
 pub fn collect_tree(dir: &Path) -> Result<Vec<ImageFile>> {
     fn walk(base: &Path, dir: &Path, out: &mut Vec<ImageFile>) -> Result {
-        let mut entries: Vec<_> = fs::read_dir(dir).map_err(|e| format!("{}: {e}", dir.display()))?.flatten().collect();
+        let mut entries: Vec<_> = fs::read_dir(dir)
+            .map_err(|e| format!("{}: {e}", dir.display()))?
+            .flatten()
+            .collect();
         entries.sort_by_key(|e| e.file_name());
         for e in entries {
             let path = e.path();
-            let rel = path.strip_prefix(base).unwrap().to_string_lossy().replace('\\', "/");
+            let rel = path
+                .strip_prefix(base)
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/");
             if path.is_dir() {
                 walk(base, &path, out)?;
             } else if e.file_name() != ".keep" {
-                let mode = if rel.starts_with("bin/") || rel.starts_with("sbin/") { 0o755 } else { 0o644 };
-                out.push(ImageFile { dest: rel, source: path, mode });
+                let mode = if rel.starts_with("bin/") || rel.starts_with("sbin/") {
+                    0o755
+                } else {
+                    0o644
+                };
+                out.push(ImageFile {
+                    dest: rel,
+                    source: path,
+                    mode,
+                });
             } else {
                 // Keep empty directories: record the directory itself.
-                let parent = Path::new(&rel).parent().unwrap().to_string_lossy().into_owned();
-                out.push(ImageFile { dest: format!("{parent}/"), source: path, mode: 0o755 });
+                let parent = Path::new(&rel)
+                    .parent()
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned();
+                out.push(ImageFile {
+                    dest: format!("{parent}/"),
+                    source: path,
+                    mode: 0o755,
+                });
             }
         }
         Ok(())

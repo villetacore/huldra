@@ -14,10 +14,16 @@ pub struct WaitQueue {
 
 impl WaitQueue {
     pub const fn new() -> Self {
-        WaitQueue { waiters: SpinLock::new(VecDeque::new()) }
+        WaitQueue {
+            waiters: SpinLock::new(VecDeque::new()),
+        }
     }
 
-    fn wait_inner<T>(&self, mut condition: impl FnMut() -> Option<T>, interruptible: bool) -> Result<T, Errno> {
+    fn wait_inner<T>(
+        &self,
+        mut condition: impl FnMut() -> Option<T>,
+        interruptible: bool,
+    ) -> Result<T, Errno> {
         loop {
             let irq = arch::irq_save();
             if let Some(v) = condition() {
@@ -68,16 +74,6 @@ impl WaitQueue {
     pub fn wake_one(&self) {
         let t = self.waiters.lock().pop_front();
         if let Some(t) = t {
-            sched::make_runnable(&t);
-        }
-    }
-
-    /// Wakes a specific task if it waits here (used for signal delivery).
-    pub fn wake_task(&self, pid: super::Pid) {
-        let mut q = self.waiters.lock();
-        if let Some(i) = q.iter().position(|t| t.pid == pid) {
-            let t = q.remove(i).unwrap();
-            drop(q);
             sched::make_runnable(&t);
         }
     }

@@ -11,7 +11,10 @@ huldra_user::main!(main);
 fn count(fd: i32) -> (usize, usize, usize) {
     let data = Reader::new(fd).read_to_end().unwrap_or_default();
     let lines = data.iter().filter(|&&b| b == b'\n').count();
-    let words = data.split(|b| b.is_ascii_whitespace()).filter(|w| !w.is_empty()).count();
+    let words = data
+        .split(|b| b.is_ascii_whitespace())
+        .filter(|w| !w.is_empty())
+        .count();
     (lines, words, data.len())
 }
 

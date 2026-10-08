@@ -94,7 +94,11 @@ pub fn open(path: &str, flags: u32, perm: u32) -> KResult<Arc<OpenFile>> {
     if flags & O_TRUNC != 0 && meta.kind == FileType::Regular && flags & O_ACCMODE != O_RDONLY {
         inode.truncate(0)?;
     }
-    OpenFile::new(inode, flags & !(O_CREAT | O_EXCL | O_TRUNC | O_CLOEXEC), String::from(path))
+    OpenFile::new(
+        inode,
+        flags & !(O_CREAT | O_EXCL | O_TRUNC | O_CLOEXEC),
+        String::from(path),
+    )
 }
 
 pub fn stat(path: &str) -> KResult<Metadata> {
@@ -103,7 +107,9 @@ pub fn stat(path: &str) -> KResult<Metadata> {
 
 pub fn mkdir(path: &str, perm: u32) -> KResult<()> {
     let (parent, name) = vfs::lookup_parent(path)?;
-    parent.create(&name, FileType::Directory, perm & 0o7777).map(|_| ())
+    parent
+        .create(&name, FileType::Directory, perm & 0o7777)
+        .map(|_| ())
 }
 
 /// Creates `path` and any missing parent directories.
@@ -199,7 +205,10 @@ mod tests {
         assert_eq!(f.read(&mut buf).unwrap(), 5);
         assert_eq!(&buf[..5], b"world");
         assert_eq!(f.write(b"x"), Err(Errno::EBADF));
-        assert_eq!(open("/tmp/t", O_CREAT | O_EXCL | O_WRONLY, 0o644).err(), Some(Errno::EEXIST));
+        assert_eq!(
+            open("/tmp/t", O_CREAT | O_EXCL | O_WRONLY, 0o644).err(),
+            Some(Errno::EEXIST)
+        );
         unlink("/tmp/t").unwrap();
         assert_eq!(stat("/tmp/t").err(), Some(Errno::ENOENT));
     }
@@ -228,7 +237,10 @@ mod tests {
     }
 
     pub fn paths() {
-        assert_eq!(vfs::normalize("/usr/bin", "../lib/./x").unwrap(), "/usr/lib/x");
+        assert_eq!(
+            vfs::normalize("/usr/bin", "../lib/./x").unwrap(),
+            "/usr/lib/x"
+        );
         assert_eq!(vfs::normalize("/", "../../..").unwrap(), "/");
         assert_eq!(vfs::normalize("/a", "/b//c/").unwrap(), "/b/c");
         assert_eq!(vfs::normalize("/", ""), Err(Errno::ENOENT));

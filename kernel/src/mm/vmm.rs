@@ -29,17 +29,26 @@ pub fn init(boot: &BootInfo) {
     let data = PteFlags::WRITABLE | PteFlags::GLOBAL | nx;
 
     // Direct map: all of 0..4 GiB (RAM, MMIO, firmware) plus RAM above it.
-    let is_ram = |s: u64, e: u64| boot.memory.iter().any(|r| r.is_usable() && r.base < e && s < r.base + r.len);
+    let is_ram = |s: u64, e: u64| {
+        boot.memory
+            .iter()
+            .any(|r| r.is_usable() && r.base < e && s < r.base + r.len)
+    };
     let mut phys = 0;
     while phys < LOW_DIRECT_MAP {
         let mut flags = data;
         if !is_ram(phys, phys + HUGE_PAGE) {
             flags |= PteFlags::NO_CACHE | PteFlags::WRITE_THROUGH;
         }
-        pt.map_2m(phys_to_virt(phys), phys, flags).expect("direct map");
+        pt.map_2m(phys_to_virt(phys), phys, flags)
+            .expect("direct map");
         phys += HUGE_PAGE;
     }
-    for r in boot.memory.iter().filter(|r| r.is_usable() && r.base + r.len > LOW_DIRECT_MAP) {
+    for r in boot
+        .memory
+        .iter()
+        .filter(|r| r.is_usable() && r.base + r.len > LOW_DIRECT_MAP)
+    {
         let mut p = align_down(r.base.max(LOW_DIRECT_MAP), HUGE_PAGE);
         while p < r.base + r.len {
             let _ = pt.map_2m(phys_to_virt(p), p, data);
@@ -52,13 +61,18 @@ pub fn init(boot: &BootInfo) {
     let map_section = |pt: &mut PageTable, (start, end): (u64, u64), flags: PteFlags| {
         let mut v = start;
         while v < end {
-            pt.map(v, v - KERNEL_VMA, flags | PteFlags::GLOBAL).expect("kernel image");
+            pt.map(v, v - KERNEL_VMA, flags | PteFlags::GLOBAL)
+                .expect("kernel image");
             v += PAGE_SIZE;
         }
     };
     map_section(&mut pt, k.text, PteFlags::EMPTY);
     map_section(&mut pt, k.rodata, nx);
-    map_section(&mut pt, (k.data.0, align_up(k.data.1, PAGE_SIZE)), PteFlags::WRITABLE | nx);
+    map_section(
+        &mut pt,
+        (k.data.0, align_up(k.data.1, PAGE_SIZE)),
+        PteFlags::WRITABLE | nx,
+    );
 
     // Pre-create every upper-half PDPT so later kernel mappings (stacks)
     // show up in all address spaces, which copy these PML4 entries.

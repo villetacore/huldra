@@ -11,7 +11,12 @@ use huldra_cpio::Reader;
 pub fn unpack_all() -> bool {
     let mut any = false;
     for m in bootinfo::get().modules.iter() {
-        let data = unsafe { core::slice::from_raw_parts(phys_to_virt(m.start) as *const u8, (m.end - m.start) as usize) };
+        let data = unsafe {
+            core::slice::from_raw_parts(
+                phys_to_virt(m.start) as *const u8,
+                (m.end - m.start) as usize,
+            )
+        };
         let (mut files, mut bytes) = (0, 0);
         for entry in Reader::new(data) {
             let entry = match entry {
@@ -42,7 +47,12 @@ pub fn unpack_all() -> bool {
                 }
             }
         }
-        kinfo!("initrd: unpacked {} files ({} KiB) from '{}'", files, bytes / 1024, m.cmdline.as_str());
+        kinfo!(
+            "initrd: unpacked {} files ({} KiB) from '{}'",
+            files,
+            bytes / 1024,
+            m.cmdline.as_str()
+        );
         frame::release_range(m.start, m.end);
         any = true;
     }

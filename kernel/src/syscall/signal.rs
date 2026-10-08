@@ -10,7 +10,11 @@ pub fn rt_sigaction(a: &mut Args) -> KResult<Ret> {
     if a.a3() != 8 {
         return Err(Errno::EINVAL);
     }
-    let new = if a.a1() != 0 { Some(uaccess::read_user::<SigAction>(a.a1())?) } else { None };
+    let new = if a.a1() != 0 {
+        Some(uaccess::read_user::<SigAction>(a.a1())?)
+    } else {
+        None
+    };
     let old = signal::sigaction(a.a0() as u32, new)?;
     if a.a2() != 0 {
         uaccess::write_user(a.a2(), &old)?;
@@ -22,7 +26,11 @@ pub fn rt_sigprocmask(a: &mut Args) -> KResult<Ret> {
     if a.a3() != 8 {
         return Err(Errno::EINVAL);
     }
-    let set = if a.a1() != 0 { Some(uaccess::read_user::<u64>(a.a1())?) } else { None };
+    let set = if a.a1() != 0 {
+        Some(uaccess::read_user::<u64>(a.a1())?)
+    } else {
+        None
+    };
     let old = signal::sigprocmask(a.a0() as u32, set)?;
     if a.a2() != 0 {
         uaccess::write_user(a.a2(), &old)?;
@@ -32,7 +40,9 @@ pub fn rt_sigprocmask(a: &mut Args) -> KResult<Ret> {
 
 pub fn rt_sigreturn(a: &mut Args) -> KResult<Ret> {
     if signal::sigreturn(a.frame).is_err() {
-        crate::proc::lifecycle::exit_process(huldra_abi::process::signal_status(huldra_abi::signal::SIGSEGV));
+        crate::proc::lifecycle::exit_process(huldra_abi::process::signal_status(
+            huldra_abi::signal::SIGSEGV,
+        ));
     }
     Ok(Ret::FrameReplaced)
 }

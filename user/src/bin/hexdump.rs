@@ -33,7 +33,14 @@ fn main() -> i32 {
         }
         print!(" |");
         for &b in chunk {
-            print!("{}", if (0x20..0x7F).contains(&b) { b as char } else { '.' });
+            print!(
+                "{}",
+                if (0x20..0x7F).contains(&b) {
+                    b as char
+                } else {
+                    '.'
+                }
+            );
         }
         println!("|");
     }

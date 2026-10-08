@@ -40,7 +40,11 @@ pub fn unmask(irq: u8) {
         if irq >= 16 {
             return;
         }
-        let (port, bit) = if irq < 8 { (MASTER_DATA, irq) } else { (SLAVE_DATA, irq - 8) };
+        let (port, bit) = if irq < 8 {
+            (MASTER_DATA, irq)
+        } else {
+            (SLAVE_DATA, irq - 8)
+        };
         outb(port, inb(port) & !(1 << bit));
     }
 }

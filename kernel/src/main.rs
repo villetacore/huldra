@@ -38,8 +38,25 @@ pub extern "C" fn kernel_main(magic: u32, info: u32) -> ! {
     println!("\x1b[96m{} {} (x86_64)\x1b[0m", NAME, VERSION);
 
     let boot = bootinfo::store(unsafe { bootinfo::parse(magic, info as u64) });
-    kinfo!("booted via {}, cmdline: '{}'", boot.protocol, boot.cmdline.as_str());
+    if boot.has_flag("debug") {
+        klog::set_console_level(klog::Level::Debug);
+    } else if boot.has_flag("quiet") {
+        klog::set_console_level(klog::Level::Warn);
+    }
+    kinfo!(
+        "booted via {}, cmdline: '{}'",
+        boot.protocol,
+        boot.cmdline.as_str()
+    );
 
+    for r in boot.memory.iter() {
+        kdebug!(
+            "memory: {:#012x}..{:#012x} {}",
+            r.base,
+            r.base + r.len,
+            r.kind_name()
+        );
+    }
     arch::init();
     time::init();
     mm::frame::init(boot);

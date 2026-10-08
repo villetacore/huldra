@@ -24,7 +24,12 @@ pub fn exec(path: &str, argv: Vec<String>, envp: Vec<String>) -> KResult<TrapFra
     exec_depth(path, argv, envp, 0)
 }
 
-fn exec_depth(path: &str, argv: Vec<String>, envp: Vec<String>, depth: usize) -> KResult<TrapFrame> {
+fn exec_depth(
+    path: &str,
+    argv: Vec<String>,
+    envp: Vec<String>,
+    depth: usize,
+) -> KResult<TrapFrame> {
     let meta = fs::stat(path)?;
     if meta.kind != FileType::Regular || meta.perm & 0o111 == 0 {
         return Err(Errno::EACCES);
@@ -36,9 +41,14 @@ fn exec_depth(path: &str, argv: Vec<String>, envp: Vec<String>, depth: usize) ->
             return Err(Errno::ELOOP);
         }
         let line_end = rest.iter().position(|&b| b == b'\n').unwrap_or(rest.len());
-        let line = core::str::from_utf8(&rest[..line_end]).map_err(|_| Errno::ENOEXEC)?.trim();
+        let line = core::str::from_utf8(&rest[..line_end])
+            .map_err(|_| Errno::ENOEXEC)?
+            .trim();
         let mut parts = line.splitn(2, char::is_whitespace);
-        let interp = parts.next().filter(|s| !s.is_empty()).ok_or(Errno::ENOEXEC)?;
+        let interp = parts
+            .next()
+            .filter(|s| !s.is_empty())
+            .ok_or(Errno::ENOEXEC)?;
         let mut new_argv = alloc::vec![String::from(interp)];
         if let Some(arg) = parts.next().map(str::trim).filter(|s| !s.is_empty()) {
             new_argv.push(String::from(arg));
@@ -63,7 +73,10 @@ fn exec_depth(path: &str, argv: Vec<String>, envp: Vec<String>, depth: usize) ->
 
     // Page-aligned regions of all loadable segments, merged where they share pages.
     let mut regions: Vec<(u64, u64, u32)> = Vec::new();
-    for ph in elf.program_headers().filter(|p| p.kind == PT_LOAD && p.memsz > 0) {
+    for ph in elf
+        .program_headers()
+        .filter(|p| p.kind == PT_LOAD && p.memsz > 0)
+    {
         let mut prot = 0;
         if ph.readable() {
             prot |= PROT_READ;
@@ -93,7 +106,8 @@ fn exec_depth(path: &str, argv: Vec<String>, envp: Vec<String>, depth: usize) ->
         return Err(Errno::ENOEXEC);
     }
     for &(s, e, p) in &merged {
-        mm.add_vma(s, e, p, VmaKind::Program).map_err(|_| Errno::ENOEXEC)?;
+        mm.add_vma(s, e, p, VmaKind::Program)
+            .map_err(|_| Errno::ENOEXEC)?;
     }
     for ph in elf.program_headers().filter(|p| p.kind == PT_LOAD) {
         mm.write_bytes(ph.vaddr + bias, elf.segment_data(&ph))?;
@@ -102,7 +116,12 @@ fn exec_depth(path: &str, argv: Vec<String>, envp: Vec<String>, depth: usize) ->
     let image_end = merged.iter().map(|r| r.1).max().unwrap();
     mm.brk_start = image_end;
     mm.brk = image_end;
-    mm.add_vma(STACK_TOP - STACK_SIZE, STACK_TOP, PROT_READ | PROT_WRITE, VmaKind::Stack)?;
+    mm.add_vma(
+        STACK_TOP - STACK_SIZE,
+        STACK_TOP,
+        PROT_READ | PROT_WRITE,
+        VmaKind::Stack,
+    )?;
 
     let entry = elf.entry + bias;
     let phdr = elf.phdr_vaddr().map_or(0, |p| p + bias);
@@ -154,8 +173,14 @@ fn build_stack(
     let mut st = Stack { mm, sp: STACK_TOP };
 
     let execfn = st.push_str(path)?;
-    let env_ptrs: Vec<u64> = envp.iter().map(|s| st.push_str(s)).collect::<KResult<_>>()?;
-    let arg_ptrs: Vec<u64> = argv.iter().map(|s| st.push_str(s)).collect::<KResult<_>>()?;
+    let env_ptrs: Vec<u64> = envp
+        .iter()
+        .map(|s| st.push_str(s))
+        .collect::<KResult<_>>()?;
+    let arg_ptrs: Vec<u64> = argv
+        .iter()
+        .map(|s| st.push_str(s))
+        .collect::<KResult<_>>()?;
     let mut random = [0u8; 16];
     let tsc = crate::arch::cpu::rdtsc();
     for (i, b) in random.iter_mut().enumerate() {

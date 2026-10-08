@@ -70,7 +70,8 @@ pub fn handle_irq() {
         0x1C if extended => kbd.push(b'\r'), // keypad Enter
         _ if extended => {}                  // arrows etc. are not supported yet
         _ => {
-            let Some(&base) = (if kbd.shift { &SHIFTED } else { &NORMAL }).get(code as usize) else {
+            let Some(&base) = (if kbd.shift { &SHIFTED } else { &NORMAL }).get(code as usize)
+            else {
                 return;
             };
             if base == 0 {
@@ -92,4 +93,3 @@ pub fn handle_irq() {
         super::tty::input(c);
     }
 }
-

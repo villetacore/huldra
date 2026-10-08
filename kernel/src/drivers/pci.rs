@@ -15,14 +15,17 @@ pub struct Device {
     pub device: u16,
     pub class: u8,
     pub subclass: u8,
-    pub prog_if: u8,
     pub irq_line: u8,
 }
 
 static DEVICES: SpinLock<Vec<Device>> = SpinLock::new(Vec::new());
 
 pub fn read32(bus: u8, slot: u8, function: u8, offset: u8) -> u32 {
-    let address = 0x8000_0000 | (bus as u32) << 16 | (slot as u32) << 11 | (function as u32) << 8 | (offset as u32 & 0xFC);
+    let address = 0x8000_0000
+        | (bus as u32) << 16
+        | (slot as u32) << 11
+        | (function as u32) << 8
+        | (offset as u32 & 0xFC);
     unsafe {
         outl(0xCF8, address);
         inl(0xCFC)
@@ -91,7 +94,6 @@ pub fn scan() {
                     device: (id >> 16) as u16,
                     class: (class >> 24) as u8,
                     subclass: (class >> 16) as u8,
-                    prog_if: (class >> 8) as u8,
                     irq_line: irq as u8,
                 });
             }
@@ -111,7 +113,7 @@ pub fn listing() -> String {
     for d in devices() {
         let vendor = vendor_name(d.vendor);
         s.push_str(&format!(
-            "{:02x}:{:02x}.{} {} [{:02x}{:02x}]: {}{}[{:04x}:{:04x}]\n",
+            "{:02x}:{:02x}.{} {} [{:02x}{:02x}]: {}{}[{:04x}:{:04x}]{}\n",
             d.bus,
             d.slot,
             d.function,
@@ -121,7 +123,12 @@ pub fn listing() -> String {
             vendor,
             if vendor.is_empty() { "" } else { " " },
             d.vendor,
-            d.device
+            d.device,
+            if d.irq_line != 0 && d.irq_line != 0xFF {
+                format!(" irq {}", d.irq_line)
+            } else {
+                String::new()
+            }
         ));
     }
     s

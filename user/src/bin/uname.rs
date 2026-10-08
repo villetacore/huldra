@@ -14,7 +14,10 @@ fn field(b: &[u8]) -> &str {
 
 fn main() -> i32 {
     let Ok(u) = sys::uname() else { return 1 };
-    let flags: Vec<char> = env::args()[1..].iter().flat_map(|a| a.trim_start_matches('-').chars()).collect();
+    let flags: Vec<char> = env::args()[1..]
+        .iter()
+        .flat_map(|a| a.trim_start_matches('-').chars())
+        .collect();
     let all = flags.contains(&'a');
     let mut parts = Vec::new();
     if all || flags.is_empty() || flags.contains(&'s') {

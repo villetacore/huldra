@@ -57,7 +57,12 @@ impl MemorySpace {
     pub fn new() -> KResult<MemorySpace> {
         let mut pt = PageTable::new().ok_or(Errno::ENOMEM)?;
         vmm::share_kernel_half(&mut pt);
-        Ok(MemorySpace { pt, vmas: BTreeMap::new(), brk_start: 0, brk: 0 })
+        Ok(MemorySpace {
+            pt,
+            vmas: BTreeMap::new(),
+            brk_start: 0,
+            brk: 0,
+        })
     }
 
     pub fn root(&self) -> u64 {
@@ -65,31 +70,47 @@ impl MemorySpace {
     }
 
     pub fn find(&self, addr: u64) -> Option<&Vma> {
-        self.vmas.range(..=addr).next_back().map(|(_, v)| v).filter(|v| addr < v.end)
+        self.vmas
+            .range(..=addr)
+            .next_back()
+            .map(|(_, v)| v)
+            .filter(|v| addr < v.end)
     }
 
     fn overlaps(&self, start: u64, end: u64) -> bool {
-        self.vmas.range(..end).next_back().is_some_and(|(_, v)| v.end > start)
+        self.vmas
+            .range(..end)
+            .next_back()
+            .is_some_and(|(_, v)| v.end > start)
     }
 
     pub fn add_vma(&mut self, start: u64, end: u64, prot: u32, kind: VmaKind) -> KResult<()> {
-        if start >= end || start < USER_MIN || end > USER_END || start % PAGE_SIZE != 0 || end % PAGE_SIZE != 0 {
+        if start >= end
+            || start < USER_MIN
+            || end > USER_END
+            || start % PAGE_SIZE != 0
+            || end % PAGE_SIZE != 0
+        {
             return Err(Errno::EINVAL);
         }
         if self.overlaps(start, end) {
             return Err(Errno::EEXIST);
         }
-        self.vmas.insert(start, Vma { start, end, prot, kind });
+        self.vmas.insert(
+            start,
+            Vma {
+                start,
+                end,
+                prot,
+                kind,
+            },
+        );
         Ok(())
     }
 
     /// Total size of all areas.
     pub fn vm_bytes(&self) -> u64 {
         self.vmas.values().map(|v| v.end - v.start).sum()
-    }
-
-    pub fn vmas(&self) -> impl Iterator<Item = &Vma> {
-        self.vmas.values()
     }
 
     fn map_new_page(&mut self, page: u64, prot: u32) -> KResult<u64> {
@@ -103,8 +124,13 @@ impl MemorySpace {
 
     /// Resolves a fault at `addr`; false if the access is not allowed.
     pub fn handle_fault(&mut self, addr: u64, write: bool, exec: bool) -> bool {
-        let Some(vma) = self.find(addr).copied() else { return false };
-        if (write && vma.prot & PROT_WRITE == 0) || (exec && vma.prot & PROT_EXEC == 0) || vma.prot == 0 {
+        let Some(vma) = self.find(addr).copied() else {
+            return false;
+        };
+        if (write && vma.prot & PROT_WRITE == 0)
+            || (exec && vma.prot & PROT_EXEC == 0)
+            || vma.prot == 0
+        {
             return false;
         }
         let page = align_down(addr, PAGE_SIZE);
@@ -136,7 +162,13 @@ impl MemorySpace {
             let va = addr + done as u64;
             let (pa, _) = self.pt.translate(va).ok_or(Errno::EFAULT)?;
             let n = (PAGE_SIZE - va % PAGE_SIZE).min((data.len() - done) as u64) as usize;
-            unsafe { core::ptr::copy_nonoverlapping(data[done..].as_ptr(), phys_to_virt(pa) as *mut u8, n) };
+            unsafe {
+                core::ptr::copy_nonoverlapping(
+                    data[done..].as_ptr(),
+                    phys_to_virt(pa) as *mut u8,
+                    n,
+                )
+            };
             done += n;
         }
         Ok(())
@@ -175,8 +207,12 @@ impl MemorySpace {
 
     /// Removes `[start, end)` from the address space, splitting areas.
     pub fn unmap_range(&mut self, start: u64, end: u64) {
-        let affected: alloc::vec::Vec<Vma> =
-            self.vmas.range(..end).map(|(_, v)| *v).filter(|v| v.end > start).collect();
+        let affected: alloc::vec::Vec<Vma> = self
+            .vmas
+            .range(..end)
+            .map(|(_, v)| *v)
+            .filter(|v| v.end > start)
+            .collect();
         for v in affected {
             self.vmas.remove(&v.start);
             if v.start < start {
@@ -192,8 +228,12 @@ impl MemorySpace {
     /// Changes protection of `[start, end)` (must be fully mapped).
     pub fn protect(&mut self, start: u64, end: u64, prot: u32) -> KResult<()> {
         self.check_range_mapped(start, end)?;
-        let affected: alloc::vec::Vec<Vma> =
-            self.vmas.range(..end).map(|(_, v)| *v).filter(|v| v.end > start).collect();
+        let affected: alloc::vec::Vec<Vma> = self
+            .vmas
+            .range(..end)
+            .map(|(_, v)| *v)
+            .filter(|v| v.end > start)
+            .collect();
         for v in affected {
             self.vmas.remove(&v.start);
             if v.start < start {
@@ -203,7 +243,15 @@ impl MemorySpace {
                 self.vmas.insert(end, Vma { start: end, ..v });
             }
             let (s, e) = (v.start.max(start), v.end.min(end));
-            self.vmas.insert(s, Vma { start: s, end: e, prot, kind: v.kind });
+            self.vmas.insert(
+                s,
+                Vma {
+                    start: s,
+                    end: e,
+                    prot,
+                    kind: v.kind,
+                },
+            );
             let mut page = s;
             while page < e {
                 self.pt.set_flags(page, pte_flags(prot));
@@ -249,7 +297,12 @@ impl MemorySpace {
             }
             self.unmap_range(hint, hint + len);
             hint
-        } else if hint != 0 && hint % PAGE_SIZE == 0 && !self.overlaps(hint, hint + len) && hint >= USER_MIN && hint + len <= MMAP_TOP {
+        } else if hint != 0
+            && hint % PAGE_SIZE == 0
+            && !self.overlaps(hint, hint + len)
+            && hint >= USER_MIN
+            && hint + len <= MMAP_TOP
+        {
             hint
         } else {
             self.find_gap(len)?
@@ -272,7 +325,10 @@ impl MemorySpace {
             match self.vmas.get_mut(&self.brk_start) {
                 Some(v) if v.kind == VmaKind::Heap => v.end = new_end,
                 _ => {
-                    if self.add_vma(old_end, new_end, PROT_READ | PROT_WRITE, VmaKind::Heap).is_err() {
+                    if self
+                        .add_vma(old_end, new_end, PROT_READ | PROT_WRITE, VmaKind::Heap)
+                        .is_err()
+                    {
                         return self.brk;
                     }
                 }

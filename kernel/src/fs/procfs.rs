@@ -39,16 +39,33 @@ impl Inode for ProcFile {
     }
 }
 
-const STATIC_FILES: &[&str] = &["cpuinfo", "interrupts", "kmsg", "meminfo", "mounts", "pci", "uptime", "version"];
+const STATIC_FILES: &[&str] = &[
+    "cpuinfo",
+    "interrupts",
+    "kmsg",
+    "meminfo",
+    "mounts",
+    "pci",
+    "uptime",
+    "version",
+];
 const PID_FILES: &[&str] = &["cmdline", "stat", "status"];
 
 fn static_file(name: &str) -> Option<String> {
     Some(match name {
         "uptime" => {
             let ms = crate::time::uptime_ms();
-            let idle = task::lookup(0).map_or(0, |t| t.cpu_ticks.load(core::sync::atomic::Ordering::Relaxed));
+            let idle = task::lookup(0).map_or(0, |t| {
+                t.cpu_ticks.load(core::sync::atomic::Ordering::Relaxed)
+            });
             let idle_ms = idle * 1000 / crate::time::HZ;
-            format!("{}.{:02} {}.{:02}\n", ms / 1000, ms % 1000 / 10, idle_ms / 1000, idle_ms % 1000 / 10)
+            format!(
+                "{}.{:02} {}.{:02}\n",
+                ms / 1000,
+                ms % 1000 / 10,
+                idle_ms / 1000,
+                idle_ms % 1000 / 10
+            )
         }
         "meminfo" => {
             let (free, total) = crate::mm::frame::stats();
@@ -61,7 +78,11 @@ fn static_file(name: &str) -> Option<String> {
                 heap.slab_pages_bytes / 1024
             )
         }
-        "version" => format!("{} version {} (rustc) #1 x86_64\n", crate::NAME, crate::VERSION),
+        "version" => format!(
+            "{} version {} (rustc) #1 x86_64\n",
+            crate::NAME,
+            crate::VERSION
+        ),
         "mounts" => {
             let mut s = String::new();
             for (path, source, fstype) in mounts() {
@@ -130,7 +151,10 @@ impl Inode for PidDir {
     }
 
     fn lookup(&self, name: &str) -> KResult<Arc<dyn Inode>> {
-        let idx = PID_FILES.iter().position(|&f| f == name).ok_or(Errno::ENOENT)?;
+        let idx = PID_FILES
+            .iter()
+            .position(|&f| f == name)
+            .ok_or(Errno::ENOENT)?;
         task::lookup(self.pid).ok_or(Errno::ENOENT)?;
         let (pid, file) = (self.pid, PID_FILES[idx]);
         Ok(Arc::new(ProcFile {
@@ -144,7 +168,11 @@ impl Inode for PidDir {
         Ok(PID_FILES
             .iter()
             .enumerate()
-            .map(|(i, n)| DirEntry { name: n.to_string(), ino: pid_dir_ino(self.pid) + 1 + i as u64, kind: FileType::Regular })
+            .map(|(i, n)| DirEntry {
+                name: n.to_string(),
+                ino: pid_dir_ino(self.pid) + 1 + i as u64,
+                kind: FileType::Regular,
+            })
             .collect())
     }
 
@@ -167,7 +195,11 @@ impl Inode for ProcRoot {
                 generate: Box::new(move || static_file(file).unwrap_or_default()),
             }));
         }
-        let pid = if name == "self" { crate::task::sched::current_pid() } else { name.parse().map_err(|_| Errno::ENOENT)? };
+        let pid = if name == "self" {
+            crate::task::sched::current_pid()
+        } else {
+            name.parse().map_err(|_| Errno::ENOENT)?
+        };
         task::lookup(pid).ok_or(Errno::ENOENT)?;
         Ok(Arc::new(PidDir { dev: self.dev, pid }))
     }
@@ -176,10 +208,18 @@ impl Inode for ProcRoot {
         let mut v: Vec<DirEntry> = STATIC_FILES
             .iter()
             .enumerate()
-            .map(|(i, n)| DirEntry { name: n.to_string(), ino: 2 + i as u64, kind: FileType::Regular })
+            .map(|(i, n)| DirEntry {
+                name: n.to_string(),
+                ino: 2 + i as u64,
+                kind: FileType::Regular,
+            })
             .collect();
         for t in task::all_tasks() {
-            v.push(DirEntry { name: t.pid.to_string(), ino: pid_dir_ino(t.pid), kind: FileType::Directory });
+            v.push(DirEntry {
+                name: t.pid.to_string(),
+                ino: pid_dir_ino(t.pid),
+                kind: FileType::Directory,
+            });
         }
         Ok(v)
     }
@@ -204,5 +244,7 @@ impl FileSystem for ProcFs {
 }
 
 pub fn new() -> Arc<ProcFs> {
-    Arc::new(ProcFs { root: Arc::new(ProcRoot { dev: alloc_dev() }) })
+    Arc::new(ProcFs {
+        root: Arc::new(ProcRoot { dev: alloc_dev() }),
+    })
 }

@@ -25,8 +25,12 @@ struct Scheduler {
     graveyard: Vec<Arc<Task>>,
 }
 
-static SCHED: SpinLock<Scheduler> =
-    SpinLock::new(Scheduler { run_queue: VecDeque::new(), current: None, idle: None, graveyard: Vec::new() });
+static SCHED: SpinLock<Scheduler> = SpinLock::new(Scheduler {
+    run_queue: VecDeque::new(),
+    current: None,
+    idle: None,
+    graveyard: Vec::new(),
+});
 static NEED_RESCHED: AtomicBool = AtomicBool::new(false);
 static SLICE_LEFT: AtomicU32 = AtomicU32::new(TIME_SLICE);
 static STARTED: AtomicBool = AtomicBool::new(false);
@@ -49,7 +53,11 @@ pub fn is_running() -> bool {
 }
 
 pub fn current() -> Arc<Task> {
-    SCHED.lock().current.clone().expect("scheduler not initialized")
+    SCHED
+        .lock()
+        .current
+        .clone()
+        .expect("scheduler not initialized")
 }
 
 pub fn current_pid() -> super::Pid {

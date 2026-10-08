@@ -43,7 +43,10 @@ impl Write for Ring {
     }
 }
 
-static RING: SpinLock<Ring> = SpinLock::new(Ring { buf: [0; RING_SIZE], written: 0 });
+static RING: SpinLock<Ring> = SpinLock::new(Ring {
+    buf: [0; RING_SIZE],
+    written: 0,
+});
 static CONSOLE_LEVEL: AtomicU8 = AtomicU8::new(Level::Info as u8);
 
 pub fn set_console_level(level: Level) {
@@ -54,10 +57,23 @@ pub fn log(level: Level, args: fmt::Arguments) {
     let ms = crate::time::uptime_ms();
     {
         let mut ring = RING.lock();
-        let _ = write!(ring, "[{:5}.{:03}] {}{}\n", ms / 1000, ms % 1000, level.tag(), args);
+        let _ = write!(
+            ring,
+            "[{:5}.{:03}] {}{}\n",
+            ms / 1000,
+            ms % 1000,
+            level.tag(),
+            args
+        );
     }
     if level as u8 <= CONSOLE_LEVEL.load(Ordering::Relaxed) {
-        crate::console::_print(format_args!("[{:5}.{:03}] {}{}\n", ms / 1000, ms % 1000, level.tag(), args));
+        crate::console::_print(format_args!(
+            "[{:5}.{:03}] {}{}\n",
+            ms / 1000,
+            ms % 1000,
+            level.tag(),
+            args
+        ));
     }
 }
 
@@ -66,7 +82,9 @@ pub fn snapshot() -> alloc::vec::Vec<u8> {
     let ring = RING.lock();
     let len = ring.written.min(RING_SIZE);
     let start = ring.written - len;
-    (start..ring.written).map(|i| ring.buf[i % RING_SIZE]).collect()
+    (start..ring.written)
+        .map(|i| ring.buf[i % RING_SIZE])
+        .collect()
 }
 
 macro_rules! kerror {
@@ -81,7 +99,6 @@ macro_rules! kinfo {
     ($($arg:tt)*) => ($crate::klog::log($crate::klog::Level::Info, format_args!($($arg)*)));
 }
 
-#[allow(unused_macros)]
 macro_rules! kdebug {
     ($($arg:tt)*) => ($crate::klog::log($crate::klog::Level::Debug, format_args!($($arg)*)));
 }

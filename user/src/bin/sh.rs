@@ -73,7 +73,11 @@ fn tokenize(line: &str, status: i32, params: &[String]) -> Result<Vec<Token>, St
             out.push_str(&params.get(1..).unwrap_or(&[]).join(" "));
             *i += 1;
         } else if c.is_ascii_digit() {
-            out.push_str(params.get(c as usize - '0' as usize).map_or("", String::as_str));
+            out.push_str(
+                params
+                    .get(c as usize - '0' as usize)
+                    .map_or("", String::as_str),
+            );
             *i += 1;
         } else if c == '{' {
             let start = *i + 1;
@@ -130,7 +134,10 @@ fn tokenize(line: &str, status: i32, params: &[String]) -> Result<Vec<Token>, St
                 in_word = true;
                 i += 1;
                 while i < chars.len() && chars[i] != '"' {
-                    if chars[i] == '\\' && i + 1 < chars.len() && matches!(chars[i + 1], '"' | '\\' | '$') {
+                    if chars[i] == '\\'
+                        && i + 1 < chars.len()
+                        && matches!(chars[i + 1], '"' | '\\' | '$')
+                    {
                         word.push(chars[i + 1]);
                         i += 2;
                     } else if chars[i] == '$' {
@@ -222,7 +229,9 @@ fn parse(tokens: Vec<Token>) -> Result<Vec<(Connector, Pipeline)>, String> {
     let mut cmd = Command::default();
     let mut it = tokens.into_iter().peekable();
 
-    fn target(it: &mut core::iter::Peekable<alloc::vec::IntoIter<Token>>) -> Result<String, String> {
+    fn target(
+        it: &mut core::iter::Peekable<alloc::vec::IntoIter<Token>>,
+    ) -> Result<String, String> {
         match it.next() {
             Some(Token::Word(w)) => Ok(w),
             _ => Err("syntax error: expected a file name".into()),
@@ -252,7 +261,13 @@ fn parse(tokens: Vec<Token>) -> Result<Vec<(Connector, Pipeline)>, String> {
                 }
                 if !commands.is_empty() {
                     let background = tok == Some(Token::Amp);
-                    list.push((connector, Pipeline { commands: core::mem::take(&mut commands), background }));
+                    list.push((
+                        connector,
+                        Pipeline {
+                            commands: core::mem::take(&mut commands),
+                            background,
+                        },
+                    ));
                 } else if matches!(tok, Some(Token::And) | Some(Token::Or)) {
                     return Err("syntax error: missing command".into());
                 }
@@ -284,7 +299,9 @@ impl Shell {
         let arg = |i: usize| argv.get(i).map(String::as_str);
         Some(match argv[0].as_str() {
             "cd" => {
-                let dir = arg(1).map(String::from).unwrap_or_else(|| String::from(env::var("HOME").unwrap_or("/")));
+                let dir = arg(1)
+                    .map(String::from)
+                    .unwrap_or_else(|| String::from(env::var("HOME").unwrap_or("/")));
                 match fs::set_current_dir(&dir) {
                     Ok(()) => {
                         env::set_var("PWD", &fs::current_dir().unwrap_or_default());
@@ -351,7 +368,9 @@ impl Shell {
 
     /// Sets up redirections in a child process.
     fn redirect(cmd: &Command) -> Result<(), String> {
-        let open = |path: &str, flags: u32| sys::open(path, flags, 0o644).map_err(|e| format!("{}: {}", path, e));
+        let open = |path: &str, flags: u32| {
+            sys::open(path, flags, 0o644).map_err(|e| format!("{}: {}", path, e))
+        };
         if let Some(p) = &cmd.stdin {
             let fd = open(p, O_RDONLY)?;
             let _ = sys::dup2(fd, 0);
@@ -522,7 +541,11 @@ impl Shell {
         } else {
             cwd
         };
-        print!("\x1b[1;32mroot@{}\x1b[0m:\x1b[1;34m{}\x1b[0m# ", host.trim(), shown);
+        print!(
+            "\x1b[1;32mroot@{}\x1b[0m:\x1b[1;34m{}\x1b[0m# ",
+            host.trim(),
+            shown
+        );
         huldra_user::io::flush_stdout();
     }
 }
@@ -531,7 +554,13 @@ extern "C" fn on_interrupt(_sig: i32) {}
 
 fn main() -> i32 {
     let args = env::args();
-    let mut sh = Shell { status: 0, params: Vec::from([args[0].clone()]), interactive: false, jobs: Vec::new(), pgid: process::getpid() };
+    let mut sh = Shell {
+        status: 0,
+        params: Vec::from([args[0].clone()]),
+        interactive: false,
+        jobs: Vec::new(),
+        pgid: process::getpid(),
+    };
 
     if args.len() >= 3 && args[1] == "-c" {
         sh.params = args[2..].to_vec();

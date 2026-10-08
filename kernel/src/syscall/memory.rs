@@ -11,11 +11,22 @@ pub fn brk(a: &mut Args) -> KResult<Ret> {
     let me = sched::current();
     let mut mm = me.mm.lock();
     let mm = mm.as_mut().ok_or(Errno::ENOMEM)?;
-    value(if a.a0() == 0 { mm.brk } else { mm.set_brk(a.a0()) })
+    value(if a.a0() == 0 {
+        mm.brk
+    } else {
+        mm.set_brk(a.a0())
+    })
 }
 
 pub fn mmap(a: &mut Args) -> KResult<Ret> {
-    let (hint, len, prot, flags, fd, offset) = (a.a0(), a.a1(), a.a2() as u32, a.a3() as u32, a.a4() as i32, a.a5());
+    let (hint, len, prot, flags, fd, offset) = (
+        a.a0(),
+        a.a1(),
+        a.a2() as u32,
+        a.a3() as u32,
+        a.a4() as i32,
+        a.a5(),
+    );
     if len == 0 || offset % PAGE_SIZE != 0 {
         return Err(Errno::EINVAL);
     }
@@ -33,7 +44,11 @@ pub fn mmap(a: &mut Args) -> KResult<Ret> {
         let mut mm = me.mm.lock();
         let mm = mm.as_mut().ok_or(Errno::ENOMEM)?;
         // File contents are copied in below, so map writable at first.
-        let initial_prot = if file.is_some() { prot | PROT_WRITE } else { prot };
+        let initial_prot = if file.is_some() {
+            prot | PROT_WRITE
+        } else {
+            prot
+        };
         mm.mmap_anonymous(hint, len, initial_prot, flags & MAP_FIXED != 0)?
     };
 
@@ -65,7 +80,9 @@ pub fn munmap(a: &mut Args) -> KResult<Ret> {
     }
     let me = sched::current();
     let mut mm = me.mm.lock();
-    mm.as_mut().ok_or(Errno::EINVAL)?.unmap_range(addr, addr + len);
+    mm.as_mut()
+        .ok_or(Errno::EINVAL)?
+        .unmap_range(addr, addr + len);
     value(0)
 }
 
@@ -76,6 +93,8 @@ pub fn mprotect(a: &mut Args) -> KResult<Ret> {
     }
     let me = sched::current();
     let mut mm = me.mm.lock();
-    mm.as_mut().ok_or(Errno::EINVAL)?.protect(addr, addr + len, a.a2() as u32)?;
+    mm.as_mut()
+        .ok_or(Errno::EINVAL)?
+        .protect(addr, addr + len, a.a2() as u32)?;
     value(0)
 }

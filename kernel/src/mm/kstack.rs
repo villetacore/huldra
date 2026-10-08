@@ -17,7 +17,10 @@ struct Slots {
     free: Vec<u64>,
 }
 
-static SLOTS: SpinLock<Slots> = SpinLock::new(Slots { next: 0, free: Vec::new() });
+static SLOTS: SpinLock<Slots> = SpinLock::new(Slots {
+    next: 0,
+    free: Vec::new(),
+});
 
 pub struct KernelStack {
     slot: u64,

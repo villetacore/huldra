@@ -16,7 +16,9 @@ impl Disk for MemDisk {
     fn write_at(&self, offset: u64, buf: &[u8]) -> Result<()> {
         let mut d = self.0.borrow_mut();
         let o = offset as usize;
-        d.get_mut(o..o + buf.len()).ok_or(Error::Io)?.copy_from_slice(buf);
+        d.get_mut(o..o + buf.len())
+            .ok_or(Error::Io)?
+            .copy_from_slice(buf);
         Ok(())
     }
 }
@@ -38,11 +40,15 @@ fn check_consistency(fs: &Ext2<MemDisk>) {
     for (g, grp) in fs.groups.iter().enumerate() {
         let bitmap = fs.read_block(grp.block_bitmap).unwrap();
         let n = fs.blocks_in_group(g) as usize;
-        let free = (0..n).filter(|&i| bitmap[i / 8] & (1 << (i % 8)) == 0).count() as u32;
+        let free = (0..n)
+            .filter(|&i| bitmap[i / 8] & (1 << (i % 8)) == 0)
+            .count() as u32;
         assert_eq!(free, grp.free_blocks as u32, "group {g} free blocks");
         free_blocks += free;
         let ibitmap = fs.read_block(grp.inode_bitmap).unwrap();
-        let ifree = (0..fs.inodes_per_group as usize).filter(|&i| ibitmap[i / 8] & (1 << (i % 8)) == 0).count() as u32;
+        let ifree = (0..fs.inodes_per_group as usize)
+            .filter(|&i| ibitmap[i / 8] & (1 << (i % 8)) == 0)
+            .count() as u32;
         assert_eq!(ifree, grp.free_inodes as u32, "group {g} free inodes");
         free_inodes += ifree;
     }
@@ -57,7 +63,12 @@ fn format_and_mount() {
     let root = fs.read_inode(ROOT_INO).unwrap();
     assert!(root.is_dir());
     assert_eq!(root.links, 3);
-    let names: Vec<String> = fs.read_dir(ROOT_INO).unwrap().into_iter().map(|e| e.name).collect();
+    let names: Vec<String> = fs
+        .read_dir(ROOT_INO)
+        .unwrap()
+        .into_iter()
+        .map(|e| e.name)
+        .collect();
     assert_eq!(names, ["lost+found"]);
     check_consistency(&fs);
 }
@@ -74,11 +85,17 @@ fn files_roundtrip() {
     assert_eq!(fs.read(f, 7, &mut buf).unwrap(), 5);
     assert_eq!(&buf[..5], b"world");
     assert_eq!(fs.lookup(ROOT_INO, "hello.txt").unwrap(), f);
-    assert_eq!(fs.create(ROOT_INO, "hello.txt", S_IFREG | 0o644), Err(Error::Exists));
+    assert_eq!(
+        fs.create(ROOT_INO, "hello.txt", S_IFREG | 0o644),
+        Err(Error::Exists)
+    );
     fs.unlink(ROOT_INO, "hello.txt").unwrap();
     assert_eq!(fs.lookup(ROOT_INO, "hello.txt"), Err(Error::NotFound));
     let after = fs.statfs();
-    assert_eq!((before.free_blocks, before.free_inodes), (after.free_blocks, after.free_inodes));
+    assert_eq!(
+        (before.free_blocks, before.free_inodes),
+        (after.free_blocks, after.free_inodes)
+    );
     check_consistency(&fs);
 }
 
@@ -108,7 +125,10 @@ fn large_file_with_indirect_blocks() {
     let mut tail = [0u8; 100];
     fs.truncate(f, 6000).unwrap();
     assert_eq!(fs.read(f, 5000, &mut tail).unwrap(), 100);
-    assert!(tail.iter().all(|&b| b == 0), "old data visible after truncate+extend");
+    assert!(
+        tail.iter().all(|&b| b == 0),
+        "old data visible after truncate+extend"
+    );
     check_consistency(&fs);
 }
 
@@ -132,13 +152,19 @@ fn directories() {
     assert_eq!(fs.read_inode(ROOT_INO).unwrap().links, 4);
     // Enough entries to need several directory blocks.
     for i in 0..200 {
-        fs.create(d, &std::format!("file-with-a-long-name-{i:04}"), S_IFREG | 0o644).unwrap();
+        fs.create(
+            d,
+            &std::format!("file-with-a-long-name-{i:04}"),
+            S_IFREG | 0o644,
+        )
+        .unwrap();
     }
     assert!(fs.read_inode(d).unwrap().size > 1024);
     assert_eq!(fs.read_dir(d).unwrap().len(), 200);
     assert_eq!(fs.unlink(ROOT_INO, "dir"), Err(Error::NotEmpty));
     for i in (0..200).rev() {
-        fs.unlink(d, &std::format!("file-with-a-long-name-{i:04}")).unwrap();
+        fs.unlink(d, &std::format!("file-with-a-long-name-{i:04}"))
+            .unwrap();
     }
     assert!(fs.read_dir(d).unwrap().is_empty());
     // Freed slots are reused.
@@ -226,7 +252,10 @@ fn rejects_bad_names_and_images() {
     let mut fs = fresh(1 << 20);
     assert_eq!(fs.create(ROOT_INO, "", S_IFREG), Err(Error::Invalid));
     assert_eq!(fs.create(ROOT_INO, "a/b", S_IFREG), Err(Error::Invalid));
-    assert_eq!(fs.create(ROOT_INO, &"x".repeat(256), S_IFREG), Err(Error::NameTooLong));
+    assert_eq!(
+        fs.create(ROOT_INO, &"x".repeat(256), S_IFREG),
+        Err(Error::NameTooLong)
+    );
     let disk = MemDisk(RefCell::new(std::vec![0u8; 1 << 20]));
     assert!(matches!(Ext2::open(disk, clock), Err(Error::Corrupt(_))));
 }
@@ -234,6 +263,11 @@ fn rejects_bad_names_and_images() {
 #[test]
 fn sparse_super_backups() {
     assert!(format::has_superblock(0) && format::has_superblock(1));
-    assert!(format::has_superblock(3) && format::has_superblock(9) && format::has_superblock(25) && format::has_superblock(49));
+    assert!(
+        format::has_superblock(3)
+            && format::has_superblock(9)
+            && format::has_superblock(25)
+            && format::has_superblock(49)
+    );
     assert!(!format::has_superblock(2) && !format::has_superblock(4) && !format::has_superblock(6));
 }

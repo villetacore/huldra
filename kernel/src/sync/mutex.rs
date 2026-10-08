@@ -18,20 +18,23 @@ unsafe impl<T: Send> Send for Mutex<T> {}
 
 impl<T> Mutex<T> {
     pub const fn new(value: T) -> Self {
-        Mutex { locked: AtomicBool::new(false), waiters: WaitQueue::new(), data: UnsafeCell::new(value) }
+        Mutex {
+            locked: AtomicBool::new(false),
+            waiters: WaitQueue::new(),
+            data: UnsafeCell::new(value),
+        }
     }
 
     fn try_acquire(&self) -> bool {
-        self.locked.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_ok()
+        self.locked
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_ok()
     }
 
     pub fn lock(&self) -> MutexGuard<'_, T> {
-        self.waiters.wait_uninterruptible(|| self.try_acquire().then_some(()));
+        self.waiters
+            .wait_uninterruptible(|| self.try_acquire().then_some(()));
         MutexGuard { mutex: self }
-    }
-
-    pub fn try_lock(&self) -> Option<MutexGuard<'_, T>> {
-        self.try_acquire().then_some(MutexGuard { mutex: self })
     }
 }
 

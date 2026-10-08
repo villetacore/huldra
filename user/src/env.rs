@@ -12,7 +12,10 @@ struct Env {
 struct Global(UnsafeCell<Env>);
 unsafe impl Sync for Global {}
 
-static ENV: Global = Global(UnsafeCell::new(Env { args: Vec::new(), vars: Vec::new() }));
+static ENV: Global = Global(UnsafeCell::new(Env {
+    args: Vec::new(),
+    vars: Vec::new(),
+}));
 
 fn env() -> &'static mut Env {
     unsafe { &mut *ENV.0.get() }
@@ -45,11 +48,19 @@ pub fn args() -> &'static [String] {
 }
 
 pub fn program_name() -> &'static str {
-    env().args.first().map(|a| a.rsplit('/').next().unwrap_or(a)).unwrap_or("?")
+    env()
+        .args
+        .first()
+        .map(|a| a.rsplit('/').next().unwrap_or(a))
+        .unwrap_or("?")
 }
 
 pub fn var(key: &str) -> Option<&'static str> {
-    env().vars.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str())
+    env()
+        .vars
+        .iter()
+        .find(|(k, _)| k == key)
+        .map(|(_, v)| v.as_str())
 }
 
 pub fn set_var(key: &str, value: &str) {
@@ -70,5 +81,9 @@ pub fn vars() -> &'static [(String, String)] {
 
 /// The environment as `KEY=value` strings (for `execve`).
 pub fn envp() -> Vec<String> {
-    env().vars.iter().map(|(k, v)| alloc::format!("{}={}", k, v)).collect()
+    env()
+        .vars
+        .iter()
+        .map(|(k, v)| alloc::format!("{}={}", k, v))
+        .collect()
 }

@@ -37,13 +37,15 @@ enum Token {
 
 struct Shell {
     status: i32,
+    /// $0, $1, ...
+    params: Vec<String>,
     interactive: bool,
     jobs: Vec<Pid>,
     pgid: Pid,
 }
 
 /// Splits a line into tokens, expanding variables (not inside '...').
-fn tokenize(line: &str, status: i32) -> Result<Vec<Token>, String> {
+fn tokenize(line: &str, status: i32, params: &[String]) -> Result<Vec<Token>, String> {
     let mut tokens = Vec::new();
     let chars: Vec<char> = line.chars().collect();
     let mut i = 0;
@@ -63,6 +65,15 @@ fn tokenize(line: &str, status: i32) -> Result<Vec<Token>, String> {
             *i += 1;
         } else if c == '$' {
             out.push_str(&process::getpid().to_string());
+            *i += 1;
+        } else if c == '#' {
+            out.push_str(&params.len().saturating_sub(1).to_string());
+            *i += 1;
+        } else if c == '@' || c == '*' {
+            out.push_str(&params.get(1..).unwrap_or(&[]).join(" "));
+            *i += 1;
+        } else if c.is_ascii_digit() {
+            out.push_str(params.get(c as usize - '0' as usize).map_or("", String::as_str));
             *i += 1;
         } else if c == '{' {
             let start = *i + 1;
@@ -87,6 +98,7 @@ fn tokenize(line: &str, status: i32) -> Result<Vec<Token>, String> {
 
     macro_rules! flush {
         () => {
+            #[allow(unused_assignments)]
             if in_word {
                 tokens.push(Token::Word(core::mem::take(&mut word)));
                 in_word = false;
@@ -479,7 +491,7 @@ impl Shell {
     }
 
     fn run_line(&mut self, line: &str) {
-        let list = match tokenize(line, self.status).and_then(parse) {
+        let list = match tokenize(line, self.status, &self.params).and_then(parse) {
             Ok(l) => l,
             Err(e) => {
                 eprintln!("sh: {}", e);
@@ -519,14 +531,16 @@ extern "C" fn on_interrupt(_sig: i32) {}
 
 fn main() -> i32 {
     let args = env::args();
-    let mut sh = Shell { status: 0, interactive: false, jobs: Vec::new(), pgid: process::getpid() };
+    let mut sh = Shell { status: 0, params: Vec::from([args[0].clone()]), interactive: false, jobs: Vec::new(), pgid: process::getpid() };
 
     if args.len() >= 3 && args[1] == "-c" {
+        sh.params = args[2..].to_vec();
         sh.run_line(&args[2]);
         return sh.status;
     }
 
     let script_fd = if args.len() >= 2 && !args[1].starts_with('-') {
+        sh.params = args[1..].to_vec();
         match sys::open(&args[1], O_RDONLY | O_CLOEXEC, 0) {
             Ok(fd) => Some(fd),
             Err(e) => {

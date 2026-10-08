@@ -12,3 +12,24 @@
 > false || echo fallback
 > cd /etc && pwd
 < /etc
+> ls -l /bin | grep sh | wc
+< 1
+> echo one; echo two && echo three || echo never
+< three
+! never
+> mkdir -p /tmp/x/y && touch /tmp/x/y/z && ls /tmp/x/y
+< z
+> rm -r /tmp/x && ls /tmp
+! x
+> sleep 0.1 & 
+> ps
+< /sbin/init
+< ps
+> cat /proc/1/status
+< Name:	init
+> uname -a
+< Huldra huldra
+> echo $?
+< 0
+> utest
+< utest: 20 passed, 0 failed

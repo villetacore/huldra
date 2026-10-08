@@ -208,7 +208,9 @@ pub fn shell_session(a: &Artifacts, script: &Path) -> Result {
                 command = c.to_string();
                 println!("$ {c}");
                 console.send_line(c)?;
-                output = console.read_until_prompt(Duration::from_secs(30))?;
+                let raw = console.read_until_prompt(Duration::from_secs(60))?;
+                // Drop the terminal's echo of the command line itself.
+                output = raw.split_once('\n').map_or(String::new(), |(_, rest)| rest.to_string());
             } else if let Some(t) = line.strip_prefix("< ") {
                 if !output.contains(t) {
                     failures.push(format!("line {}: `{command}`: expected {t:?} in:\n{output}", n + 1));

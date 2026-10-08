@@ -97,24 +97,21 @@ pub fn handle_page_fault(frame: &mut TrapFrame) -> bool {
     let addr = cpu::read_cr2();
     let write = frame.error & 2 != 0;
     let exec = frame.error & 16 != 0;
-    if crate::mm::is_user_address(addr) {
-        let me = task::current();
-        let resolved = me.mm.lock().as_mut().is_some_and(|mm| mm.handle_fault(addr, write, exec));
-        if resolved {
-            return true;
-        }
-        if frame.from_user() {
-            kinfo!(
-                "{}[{}]: segfault at {:#x} ip {:#x} ({})",
-                me.name(),
-                me.pid,
-                addr,
-                frame.rip,
-                if write { "write" } else if exec { "exec" } else { "read" }
-            );
-            signal::force(&me, SIGSEGV);
-            return true;
-        }
+    let me = task::current();
+    if crate::mm::is_user_address(addr) && me.mm.lock().as_mut().is_some_and(|mm| mm.handle_fault(addr, write, exec)) {
+        return true;
+    }
+    if frame.from_user() {
+        kinfo!(
+            "{}[{}]: segfault at {:#x} ip {:#x} ({})",
+            me.name(),
+            me.pid,
+            addr,
+            frame.rip,
+            if write { "write" } else if exec { "exec" } else { "read" }
+        );
+        signal::force(&me, SIGSEGV);
+        return true;
     }
     false
 }

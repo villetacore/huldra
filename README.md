@@ -1,31 +1,70 @@
-# Huldra
+<div align="center">
+
+<img src="docs/logo.svg" alt="Huldra" width="560">
+
+**A small Unix-like operating system for x86_64, written in Rust from scratch.**
 
 [![CI](https://github.com/villetacore/huldra/actions/workflows/ci.yml/badge.svg)](https://github.com/villetacore/huldra/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/villetacore/huldra)](https://github.com/villetacore/huldra/releases)
+[![Release](https://img.shields.io/github/v/release/villetacore/huldra?include_prereleases&color=3e8a58)](https://github.com/villetacore/huldra/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-3e8a58)](LICENSE)
+[![Rust stable](https://img.shields.io/badge/rust-stable-e0a84a?logo=rust)](rust-toolchain.toml)
+[![No dependencies](https://img.shields.io/badge/crates.io%20deps-0-3e8a58)](Cargo.toml)
 
-Небольшая Unix-подобная операционная система для x86_64 на Rust: монолитное
-модульное ядро с системными вызовами Linux, корневая ФС ext2 на диске,
-свой shell, текстовый редактор, файловый менеджер, компилятор Си, сеть TCP/IP,
-пакетный менеджер с репозиторием и графика: дисплейный сервер, оконные
-менеджеры в стиле Openbox и i3, панель, приложения и игры — всё в духе
-старого зелёного терминала с фосфорным экраном. Запускает и статические
-Linux-программы (glibc). Собирается на **stable** Rust, без зависимостей с
-crates.io.
+[Getting started](docs/getting-started.md) ·
+[Documentation](docs/README.md) ·
+[Packages](docs/packages.md) ·
+[Architecture](docs/architecture.md) ·
+[Contributing](CONTRIBUTING.md) ·
+[Русский](README.ru.md)
 
-![boxwm: плавающие окна](docs/screenshots/boxwm.png)
+</div>
 
-![tilewm: тайлинг в стиле i3](docs/screenshots/tilewm.png)
+---
 
-![hack в текстовой консоли](docs/screenshots/hack.png)
+Huldra is a monolithic kernel with Linux-compatible system calls, an ext2
+root file system, a TCP/IP stack, a C compiler that runs inside the system, a
+**NixOS-style declarative package manager**, and an X11-like graphical
+session with stacking and tiling window managers. All of it is styled like an
+old green phosphor terminal.
+
+It runs unmodified static Linux binaries (glibc) and builds on **stable**
+Rust with **zero crates.io dependencies**. Every line of the system, from the
+page allocator to SHA-256, is in this repository.
+
+<table>
+<tr>
+<td><img src="docs/screenshots/boxwm.png" alt="boxwm: stacking windows"></td>
+<td><img src="docs/screenshots/tilewm.png" alt="tilewm: i3-style tiling"></td>
+</tr>
+<tr>
+<td align="center"><b>boxwm</b>: stacking, like Openbox</td>
+<td align="center"><b>tilewm</b>: tiling, like i3</td>
+</tr>
+</table>
+
+## Try it
+
+```bash
+git clone https://github.com/villetacore/huldra && cd huldra
+cargo xtask run          # needs Rust and QEMU; add --gui for the desktop
+```
+
+Or download a bootable ISO or disk image from
+[Releases](https://github.com/villetacore/huldra/releases). See
+[getting started](docs/getting-started.md).
+
+## A taste
 
 ```text
-root@huldra:~# pkg update && pkg install fortune cowsay
-fetching http://10.0.2.2:8800/INDEX
-  6 packages
-also installing dependencies: fortune-data
-installed fortune-data 1.0-1
-installed fortune 1.2-1
-installed cowsay 3.0-1
+root@huldra:~# cat /etc/system.conf
+repo = http://10.0.2.2:8800
+packages = fortune cowsay
+hostname = huldra
+root@huldra:~# pkg switch
+  + fortune-data 1.0-2
+  + fortune 1.2-2
+  + cowsay 3.0-2
+switched to generation 1
 root@huldra:~# fortune | cowsay
  ________________________________________
 / Talk is cheap. Show me the code.       \
@@ -36,260 +75,118 @@ root@huldra:~# fortune | cowsay
             (__)\       )\/\
                 ||----w |
                 ||     ||
+root@huldra:~# pkg remove fortune && pkg rollback    # every change can be undone
 root@huldra:~# echo 'int main(void){ printf("%d\n", 6*7); }' > a.c && cc -run a.c
 42
 ```
 
-## Готовые сборки
+## Features
 
-На странице [Releases](https://github.com/villetacore/huldra/releases) —
-загрузочный ISO, ядро и initrd для `qemu -kernel`, образ диска, репозиторий
-пакетов и `SHA256SUMS`:
+<table>
+<tr><td width="50%" valign="top">
 
-```bash
-gunzip huldra-0.3.0-x86_64-disk.img.gz
-qemu-system-x86_64 -m 256M -nic user,model=e1000 -kernel huldra-0.3.0-x86_64-kernel -initrd huldra-0.3.0-x86_64-initrd.cpio -drive file=huldra-0.3.0-x86_64-disk.img,format=raw,if=ide -append "root=/dev/hda gui"
-```
+**Kernel**
+- Multiboot2 and PVH boot, higher half, W^X/NX
+- Preemptive scheduler, `fork`/`clone` threads, futex, signals, job control
+- ~130 Linux system calls: static glibc programs run as they are
+- VFS with symbolic links: ext2 (read/write, passes `e2fsck`), tmpfs,
+  devfs, procfs, pipes
+- Drivers: e1000, ATA, PS/2, VGA console, framebuffer, PTYs, ACPI/APIC
 
-ISO грузится через GRUB (Multiboot2) и работает из initrd, без диска.
+</td><td width="50%" valign="top">
 
-## Быстрый старт
+**Declarative packages**
+- The whole system in [`/etc/system.conf`](rootfs/etc/system.conf)
+- Content-addressed store, atomic generations, `pkg rollback`, `pkg gc`
+- Managed `/etc` files, pinned versions, local packages
+- A binary repository over HTTP, built from [`packages/`](packages)
+- [Read more →](docs/packages.md)
 
-Нужны Rust (stable, target ставится сам через `rust-toolchain.toml`) и QEMU.
+</td></tr>
+<tr><td valign="top">
 
-```bash
-cargo xtask run
-```
+**User space**
+- `sh` with functions, `$(…)`, globbing, history, completion and jobs
+- `edit` (syntax highlighting), `less`, `fm` (Midnight Commander style), `top`
+- About 80 utilities, from `ls` and `grep` to `tar` and `sha256sum`
+- Network: `ifconfig ping host wget nc httpd`
 
-Собирает ядро, программы, initrd и диск, поднимает репозиторий пакетов и
-запускает QEMU с сетевой картой e1000. Консоль — в окне QEMU и в терминале.
+</td><td valign="top">
 
-Для тестов нужны ещё `gcc` (сравнение с hcc и Linux-программы) и
-`e2fsck`; на Windows их берут из WSL. Для ISO — `grub-mkrescue`, `xorriso`,
-`mtools`. Без них соответствующие шаги пропускаются.
+**C compiler (`cc`)**
+- Compiles straight to a static ELF: no assembler, objects or linker
+- C99/C11 with GNU extensions, SSE floating point, `setjmp`
+- Its own libc: stdio, malloc, math, sockets, DNS, GUI
+- Output matches gcc's on the test suite. [More →](docs/c-compiler.md)
 
-| команда | что делает |
-|---|---|
-| `cargo xtask build [--release]` | ядро, программы, `target/initrd.cpio`, `target/disk.img` |
-| `cargo xtask run [--release] [--headless] [--append "..."]` | запуск в QEMU (+ репозиторий на порту 8800, проброс `localhost:8080` → гость:80) |
-| `cargo xtask run --gui` | загрузиться сразу в графическую сессию |
-| `cargo xtask test` | все тесты (см. ниже); не трогает `disk.img`, можно запускать параллельно с `run` |
-| `cargo xtask session FILE` | прогнать один сценарий (`tests/*.txt`) на чистом диске |
-| `cargo xtask cc file.c -o prog` | скомпилировать Си на хосте компилятором hcc |
-| `cargo xtask cc-test` | `tests/cc/*.c`: hcc против gcc, вывод должен совпасть |
-| `cargo xtask repo` / `serve` | собрать репозиторий пакетов / раздавать его по HTTP |
-| `cargo xtask fsck` | создать образ ext2 и проверить настоящим `e2fsck` |
-| `cargo xtask iso` | загрузочный ISO с GRUB (нужен `grub-mkrescue`) |
+</td></tr>
+<tr><td valign="top">
 
-Параметры ядра (`--append`): `root=/dev/hda` (по умолчанию в `run`),
-`init=/bin/sh`, `ip=dhcp|none|10.0.2.15/24,10.0.2.2,10.0.2.3`, `gui`,
-`debug`, `quiet`, `ktest`. Диск `target/disk.img` — корневая ФС, данные сохраняются
-между запусками; при сборке обновляются только `/bin`, `/sbin` и `/usr`.
+**Graphics**
+- Display server with an X11-like protocol and window managers as clients
+- `term` (xterm-256), `panel`, `files`, `paint`, `calc`, `clock`
+- Games: `hack`, `mines`, `blocks`, `snake`
+- GUI programs in Rust or C. [More →](docs/graphics.md)
 
-## Что умеет система
+</td><td valign="top">
 
-**Работа в консоли.** `sh` — настоящий язык: `if/while/until/for`,
-функции, `$(...)`, `$((...))`, glob, история, Tab-дополнение, job control
-(`&`, `jobs`, `wait`). Терминал VT100 (цвета, курсор, alt-клавиши).
+**Networking**
+- Own TCP/IP: ARP, IPv4, ICMP, UDP, TCP with retransmission, DHCP, DNS
+- I/O-free, so it is unit-tested on the host over a lossy wire
+- BSD sockets with Linux numbers. [More →](docs/networking.md)
 
-**Программы.** `edit` (редактор с подсветкой синтаксиса, поиском, undo),
-`less`, `fm` (двухпанельный файловый менеджер в духе Midnight Commander),
-`top`, `cc`, `pkg`; сеть: `ifconfig ping host wget nc httpd`; утилиты:
-`ls cat cp mv rm mkdir find grep sed sort uniq cut tr wc head tail diff cmp
-xargs tar base64 sha256sum du df tree stat hexdump date cal ps kill free
-dmesg mount …` (около 80 команд).
+</td></tr>
+</table>
 
-**Компилятор Си (`cc`, hcc).** Пишется на Rust, компилирует всю программу
-сразу прямо в статический ELF — без ассемблера, объектных файлов и
-линковщика. Препроцессор (макросы с аргументами, `#`/`##`, `#if`),
-C99/C11 и расширения GNU (statement expressions, `case 1 ... 5`, `?:`,
-`typeof`), структуры и объединения, указатели на функции,
-varargs, `float`/`double` на SSE, `setjmp`/`longjmp`. Своя libc на Си
-(`/usr/lib/hcc/libc.c`, заголовки в `/usr/include`): stdio, printf/scanf,
-malloc, строки, math, time, каталоги, процессы, сигналы, сокеты и DNS.
-Примеры: `/usr/share/huldra/examples/*.c`. `cc -run file.c` компилирует
-и сразу запускает.
-
-**Сеть.** Драйвер Intel e1000, собственный стек TCP/IP (ARP, IPv4, ICMP,
-UDP, TCP с повторной передачей и управлением потоком, loopback, DHCP),
-BSD-сокеты с номерами Linux. В QEMU гость получает 10.0.2.15 по DHCP, хост
-доступен как 10.0.2.2, DNS — 10.0.2.3.
-
-**Пакеты.** `pkg update | search | info | install | remove | upgrade | list |
-files`. Пакет — tar-архив с `.PKGINFO` и файлами; репозиторий — каталог с
-`INDEX` (версии, зависимости, размер, SHA-256), раздаётся по HTTP.
-Зависимости ставятся автоматически, конфликты файлов и контрольные суммы
-проверяются, удаление учитывает зависимые пакеты. Репозитории — в
-`/etc/pkg.conf`, состояние — в `/var/lib/pkg`. Пакеты собираются из
-`packages/` (программы на Си компилируются тем же hcc): `hello`, `cowsay`,
-`fortune` (+ `fortune-data`), `2048`, `sl`, `snake` (графическая).
-
-**Linux-программы.** Статически собранные бинарники Linux (glibc, `gcc
--static`) запускаются как есть: потоки (`clone`, futex), сигналы, `fork`/
-`exec`, FPU/SSE, сокеты. Тесты в `tests/linux/`.
-
-## Графика
-
-`startgui` (или `cargo xtask run --gui`, или параметр ядра `gui`) запускает
-сессию: дисплейный сервер, оконный менеджер, панель и терминал. Выбор
-менеджера и автозапуск — в `/etc/gui.conf`; `startgui tilewm` — сразу тайлинг.
-Выйти: пункт **Exit** в меню рабочего стола (или Alt+Shift+E в tilewm);
-аварийно — Ctrl+Alt+Backspace. Мышь в QEMU работает без захвата окна
-(абсолютный указатель vmmouse).
-
-Устроено как X11:
-
-- **`display`** — дисплейный сервер. Держит кадровый буфер, клавиатуру и
-  мышь, обслуживает клиентов по TCP `127.0.0.1:6000` (`DISPLAY=:0`). У каждого
-  окна свой буфер пикселей (backing store), экран собирается заново только в
-  изменившихся областях, курсор программный. Клиенты рисуют командами
-  (прямоугольники, текст, линии, картинки, копирование областей) и получают
-  события (клавиши, мышь, фокус, изменение размера, закрытие). Протокол — в
-  `libs/gfx/src/proto.rs`.
-- **Оконный менеджер — отдельный клиент**: после `BecomeWm` показ и
-  перемещение чужих окон превращаются в запросы к нему (`MapRequest`,
-  `ConfigureRequest`), он рисует рамки своими окнами, перехватывает горячие
-  клавиши и указатель.
-  - **`boxwm`** (как Openbox): рамки с заголовком и кнопками
-    свернуть/развернуть/закрыть, перетаскивание и изменение размера (также
-    Alt+мышь), двойной клик по заголовку, меню по правому клику на рабочем
-    столе, Alt+Tab, Alt+F4, Ctrl+Alt+T — терминал, Alt+F2 — запуск команды.
-  - **`tilewm`** (как i3, `$mod` = Alt): дерево сплитов, Alt+Enter терминал,
-    Alt+d запуск (dmenu), Alt+j/k/l/; и стрелки — фокус, с Shift — перенос
-    окна, Alt+h/Alt+v — направление следующего сплита, Alt+e — сменить
-    направление, Alt+f — во весь экран, Alt+1…9 — рабочие столы, Alt+Shift+1…9
-    — перенести окно, Alt+Shift+Q — закрыть, Alt+Shift+B — в boxwm.
-- **Оформление** — как у старого терминала с фосфорным экраном: не чёрный
-  с зелёным, а тёмно-зелёное «стекло», мягкий зелёный текст, яркий зелёный
-  для выделения, янтарный и ржаво-красный как акценты; рамки окон —
-  контурные, выделение в меню — инверсией, как в текстовых терминалах.
-  Палитра одна на всю систему: `libs/gfx/src/theme.rs` (графика), те же
-  16 цветов у `term` и у текстовой консоли ядра (палитра VGA
-  перепрограммируется при загрузке, курсор — блоком). Дисплейный сервер
-  добавляет лёгкие строки развёртки ЭЛТ; выключить — `crt = off` в
-  `/etc/gui.conf` (снимки `screenshot` всегда без них).
-- **`panel`** — панель задач: меню приложений, список окон (клик —
-  показать/свернуть), рабочие столы от тайлового менеджера, часы.
-- **Приложения**: `term` (эмулятор терминала на псевдотерминале: цвета
-  xterm-256, альтернативный экран, прокрутка истории Shift+PgUp и колесом),
-  `files` (файловый менеджер), `clock`, `calc`, `paint` (рисование,
-  сохранение в PPM), `sysinfo`, `menu` (как dmenu), `screenshot`.
-- **Игры**: `mines` (сапёр: левая кнопка — открыть, правая — флажок,
-  1/2/3 — размер поля), `blocks` (падающие блоки: стрелки, x/z — поворот,
-  пробел — сбросить, p — пауза) и `hack` — взлом терминала, работает и в
-  текстовой консоли: в дампе памяти спрятаны слова, одно из них — пароль;
-  на неверное слово терминал отвечает, сколько букв стоят на своих местах,
-  четыре попытки; пары скобок `()[]{}<>` в одной строке убирают
-  слово-пустышку или возвращают попытки.
-- **Свои программы**: на Rust — модуль `huldra_user::gui`; на Си —
-  `#include <gui.h>` (часть libc, компилируется `cc` прямо в системе), пример
-  `/usr/share/huldra/examples/window.c`, игра `snake` в репозитории пакетов.
-
-## Устройство
-
-### Ядро (`kernel/`)
-
-- **Загрузка**: Multiboot2 (GRUB) и PVH (`qemu -kernel`); ядро в higher half,
-  W^X и NX.
-- **Память**: прямое отображение физической памяти, buddy + slab, VMA и
-  подкачка по требованию, стеки ядра с guard-страницами.
-- **Процессы и потоки**: вытесняющий планировщик, очереди ожидания с
-  таймаутами, `fork`/`vfork`/`clone` (потоки, TLS, `CLONE_*`), группы потоков,
-  futex, `execve` (ELF, static-pie, `#!`), сигналы с обработчиками,
-  `alarm`, состояние FPU/SSE на задачу.
-- **Системные вызовы**: около 130 вызовов с номерами и структурами Linux
-  x86_64; неизвестные пишутся в журнал один раз.
-- **ФС**: VFS (`Inode`/`FileSystem`, монтирование, общие смещения), ext2
-  (чтение/запись, корень на диске, фоновая запись `flushd`), tmpfs, devfs,
-  procfs, pipe, `poll`.
-- **Сеть**: драйвер e1000 (DMA-кольца, прерывания), поток `netd`, сокеты как
-  файлы, `/proc/net/{if,sockets,dns}`.
-- **Графика и ввод**: `/dev/fb0` (Bochs/QEMU VGA, ioctl fbdev из Linux,
-  `mmap` видеопамяти), возврат в текстовый режим со шрифтом и экраном после
-  выхода из графики, `/dev/font`, `/dev/kbd` (сырые события клавиатуры),
-  `/dev/mouse` (PS/2 с колесом и абсолютный указатель VMware/QEMU),
-  псевдотерминалы `/dev/ptmx` и `/dev/pts/N`.
-- **Драйверы**: ACPI (MADT), LAPIC/IOAPIC, PCI, ATA PIO, PS/2, COM1, VGA с
-  эмуляцией VT100, RTC.
-
-### Библиотеки (`libs/`) — без железа, тестируются `cargo test` на хосте
-
-| crate | назначение |
-|---|---|
-| `huldra-abi` | номера вызовов, errno, структуры Linux |
-| `huldra-buddy`, `huldra-kalloc` | аллокаторы страниц и кучи |
-| `huldra-elf`, `huldra-cpio`, `huldra-ext2` | ELF, initrd, ext2 (+ mkfs) |
-| `huldra-archive` | tar и SHA-256 |
-| `huldra-hcc` | компилятор Си (лексер, препроцессор, парсер, кодогенератор, ассемблер, ELF) |
-| `huldra-net` | TCP/IP без ввода-вывода: тестируется двумя стеками на «проводе» с потерями |
-| `huldra-pkg` | формат пакетов, индекс, версии, разрешение зависимостей |
-| `huldra-gfx` | отрисовка, шрифты, протокол дисплея, раскладка клавиатуры, ядро эмулятора терминала, тайловая раскладка, тема оформления |
-
-### User space (`user/`)
-
-`huldra-user` — рантайм программ на Rust (системные вызовы, буферизованный
-ввод-вывод, файлы, процессы, терминал, сокеты, DNS, HTTP-клиент).
-Программы — в `user/src/bin/`.
+## How it fits together
 
 ```text
-kernel/src/   arch/ mm/ task/ proc/ syscall/ fs/ net/ drivers/
-libs/         переиспользуемые no_std-библиотеки
-user/         рантайм и программы
-rootfs/       базовая система (/etc, /usr/include, /usr/lib/hcc)
-diskfs/       документация и примеры (/usr/share/huldra)
-docs/         скриншоты
-packages/     исходники пакетов для репозитория
-tests/        сценарии для QEMU, тесты Си и Linux-программ
-xtask/        сборка, образы, QEMU, тесты, репозиторий
-.github/      CI: тесты на каждый push, релизы по тегу
+user space   init · sh · pkg · cc · display · boxwm/tilewm · term · Linux binaries
+             huldra-user runtime (Rust)          libc.c (C, compiled by hcc)
+───────────────────────── Linux x86_64 system calls ─────────────────────────
+kernel       syscall · proc · task · fs (VFS, ext2, symlinks) · net · mm · drivers · arch
+libs/        no_std crates shared by kernel, user space and xtask: ext2, TCP/IP,
+             hcc, pkg, gfx, ELF, tar/SHA-256, allocators (unit-tested on the host)
+xtask        build, disk images, initrd, ISO, QEMU, package repository, tests
 ```
 
-## Тесты
+Details are in [architecture](docs/architecture.md).
 
-`cargo xtask test`:
+## Testing
 
-1. unit-тесты библиотек на хосте (в том числе TCP со случайной потерей
-   трети пакетов и медленным читателем, DHCP, разрешение зависимостей,
-   эмулятор терминала, тайлинг, протокол);
-2. `tests/cc`: программы, скомпилированные hcc и gcc, печатают одно и то же;
-3. тесты внутри ядра (`ktest`);
-4. сценарий shell (`tests/shell.txt`): язык shell, утилиты, редактор и
-   другие полноэкранные программы, сеть (DHCP, ping, httpd + wget, nc),
-   компиляция Си внутри системы, `utest` (20 тестов системных вызовов);
-5. перезагрузка: данные на диске сохраняются;
-6. графика (`tests/gui.txt`, программа `guitest`): отрисовка доходит до
-   экрана, текст, перемещение окон, список окон, рамки оконного менеджера,
-   возврат в текстовую консоль;
-7. пакетный менеджер против репозитория, который раздаёт xtask;
-8. настоящие Linux-программы (glibc): файлы, процессы, потоки, сокеты;
-9. проверка образа на хосте и `e2fsck -fn`.
+`cargo xtask test` boots the real system in QEMU and drives it through the
+serial console. It covers host unit tests, hcc against gcc, in-kernel
+tests, shell sessions, a reboot with persistent data, graphics, the package
+manager, Linux binaries, and finally `e2fsck` of the disk the guest wrote.
+CI runs it all on every push. See [testing](docs/testing.md).
 
-### CI и релизы
+## Project layout
 
-- [`.github/workflows/ci.yml`](.github/workflows/ci.yml) — на каждый push в
-  `main` и pull request: сборка debug и release и весь `cargo xtask test` в
-  QEMU на Ubuntu.
-- [`.github/workflows/release.yml`](.github/workflows/release.yml) — по тегу
-  `vX.Y.Z`: тесты, `build --release`, `iso`, `repo`, `fsck`, затем релиз на
-  GitHub с файлами и описанием из раздела версии в
-  [`CHANGELOG.md`](CHANGELOG.md).
+| | |
+|---|---|
+| [`kernel/`](kernel) | the kernel |
+| [`libs/`](libs) | `no_std` libraries: ext2, net, hcc, pkg, gfx, elf, archive, allocators |
+| [`user/`](user) | the runtime library and every program |
+| [`rootfs/`](rootfs) | the base system: `/etc`, `/usr/include`, libc |
+| [`packages/`](packages) | sources of the repository's packages |
+| [`docs/`](docs) | documentation (also installed in `/usr/share/huldra/docs`) |
+| [`tests/`](tests) | QEMU scenarios, C compiler tests, Linux test programs |
+| [`xtask/`](xtask) | the build tool |
 
-Выпуск версии: поднять `version` в `Cargo.toml` и `rootfs/etc/os-release`,
-перенести записи из `[Unreleased]` в новый раздел `CHANGELOG.md`, затем
+## Status
 
-```bash
-git tag v0.3.0 && git push origin main v0.3.0
-```
+Huldra is a hobby project and a learning resource. It is complete enough to
+use for fun, small enough to read, and nowhere near production. It runs on
+a single CPU, has no users or permissions, and has no copy-on-write `fork`.
+See the [roadmap](docs/roadmap.md) for what is missing and what comes next.
 
-## Ограничения
+## Contributing
 
-- Один процессор; нет SMP.
-- `fork` копирует память целиком (нет COW), нет `MAP_SHARED`.
-- Нет пользователей и прав доступа, символических ссылок.
-- Нет динамической линковки: Linux-программы — только статические.
-- Нет IPv6, TCP без управления перегрузкой и без переупорядочивания.
-- hcc: нет VLA, `long double` = `double`, битовые поля без упаковки,
-  код не оптимизируется.
-- Графика программная (без ускорения GPU), один экран, шрифт только 8×16
-  растровый; свой протокол, поэтому программы для X11/Wayland не запускаются.
-- Нет USB и звука.
+Issues and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md)
+for the workflow and code style, and [SECURITY.md](SECURITY.md) for
+reporting vulnerabilities. Everyone taking part is expected to follow the
+[code of conduct](CODE_OF_CONDUCT.md).
+
+## License
+
+[MIT](LICENSE)

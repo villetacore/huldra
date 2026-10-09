@@ -1,0 +1,58 @@
+name: Bug report
+description: Something in Huldra does not work as it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Security problems go through
+        [a private advisory](https://github.com/villetacore/huldra/security/advisories/new) instead.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: The exact commands you ran and what you saw.
+      placeholder: |
+        root@huldra:~# pkg add cowsay
+        pkg: ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Kernel log
+      description: Output of `dmesg`, or the serial output of `cargo xtask run`. A panic message is especially useful.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Huldra version or commit
+      placeholder: v0.3.0 or 1ef2c09
+    validations:
+      required: true
+  - type: input
+    id: host
+    attributes:
+      label: Host and emulator
+      placeholder: Ubuntu 24.04, QEMU 8.2 (or a release ISO in VirtualBox, ...)
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Kernel
+        - File systems
+        - Networking
+        - Packages (pkg)
+        - C compiler (cc)
+        - Graphics
+        - Shell and programs
+        - Build (xtask) / CI
+        - Documentation
+        - Other

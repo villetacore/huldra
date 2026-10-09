@@ -1,0 +1,8 @@
+# Keeps the GitHub Actions used by CI and releases up to date. The Rust
+# code itself has no dependencies to update.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

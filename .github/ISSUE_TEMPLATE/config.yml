@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://github.com/villetacore/huldra/tree/main/docs
+    about: How Huldra works, building, packages, graphics, testing
+  - name: Security vulnerability
+    url: https://github.com/villetacore/huldra/security/advisories/new
+    about: Please report vulnerabilities privately

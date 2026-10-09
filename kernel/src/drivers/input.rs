@@ -218,6 +218,9 @@ const CMD_ABSPOINTER_COMMAND: u32 = 41;
 fn vmware(cmd: u32, arg: u32) -> (u32, u32, u32, u32) {
     let (a, b, c, d): (u32, u32, u32, u32);
     // rbx cannot be an asm operand: save it on the stack around the call.
+    // The hypervisor may also write esi and edi (QEMU's vmmouse data
+    // command fills six registers), zero-extending them: they must be
+    // declared clobbered, or a pointer kept there comes back truncated.
     unsafe {
         core::arch::asm!(
             "push rbx",
@@ -229,6 +232,8 @@ fn vmware(cmd: u32, arg: u32) -> (u32, u32, u32, u32) {
             inout("eax") VMWARE_MAGIC => a,
             inout("ecx") cmd => c,
             inout("edx") VMWARE_PORT as u32 => d,
+            lateout("rsi") _,
+            lateout("rdi") _,
         );
     }
     (a, b, c, d)

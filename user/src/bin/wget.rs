@@ -7,6 +7,7 @@
 //!   -S                print the response headers
 //!   --header 'K: V'   add a request header (may repeat)
 //!   --post-data DATA  send a POST request with DATA as the body
+//!   --post-file FILE  send a POST request with FILE as the body
 //!   --compressed      ask for gzip and decode it
 //!   --insecure        do not check HTTPS certificates
 //!
@@ -30,6 +31,7 @@ struct Args {
     show_headers: bool,
     headers: Vec<(String, String)>,
     post: Option<String>,
+    post_file: Option<Vec<u8>>,
     insecure: bool,
     compressed: bool,
     urls: Vec<String>,
@@ -37,7 +39,7 @@ struct Args {
 
 fn parse_args() -> Result<Args, String> {
     let argv = env::args();
-    let mut a = Args { output: None, dir: None, resume: false, quiet: false, show_headers: false, headers: Vec::new(), post: None, insecure: false, compressed: false, urls: Vec::new() };
+    let mut a = Args { output: None, dir: None, resume: false, quiet: false, show_headers: false, headers: Vec::new(), post: None, post_file: None, insecure: false, compressed: false, urls: Vec::new() };
     let mut i = 1;
     let value = |i: &mut usize, flag: &str| -> Result<String, String> {
         *i += 1;
@@ -58,6 +60,11 @@ fn parse_args() -> Result<Args, String> {
                 a.headers.push((k.trim().to_string(), v.trim().to_string()));
             }
             "--post-data" => a.post = Some(value(&mut i, "--post-data")?),
+            "--post-file" => {
+                let f = value(&mut i, "--post-file")?;
+                let data = fs::read(&f).map_err(|e| format!("{}: {}", f, e))?;
+                a.post_file = Some(data);
+            }
             s if s.starts_with('-') && s != "-" => return Err(format!("unknown option {}", s)),
             u => a.urls.push(u.to_string()),
         }
@@ -129,9 +136,10 @@ fn download(url_text: &str, a: &Args) -> Result<(), String> {
     let to_stdout = out == "-";
     let quiet = a.quiet || to_stdout;
     let offset = if a.resume && !to_stdout { fs::metadata(&out).map(|s| s.st_size as u64).unwrap_or(0) } else { 0 };
-    let mut req = match &a.post {
-        Some(data) => Request::post(url.clone(), "application/x-www-form-urlencoded", data.as_bytes().to_vec()),
-        None => Request::get(url.clone()),
+    let mut req = match (&a.post, &a.post_file) {
+        (Some(data), _) => Request::post(url.clone(), "application/x-www-form-urlencoded", data.as_bytes().to_vec()),
+        (None, Some(data)) => Request::post(url.clone(), "application/octet-stream", data.clone()),
+        (None, None) => Request::get(url.clone()),
     };
     if offset > 0 {
         req = req.header("Range", &format!("bytes={}-", offset));
@@ -202,7 +210,7 @@ fn main() -> i32 {
     let a = match parse_args() {
         Ok(a) => a,
         Err(e) => {
-            eprintln!("wget: {}\nusage: wget [-O FILE] [-P DIR] [-c] [-q] [-S] [--header 'K: V'] [--post-data DATA] [--compressed] [--insecure] URL...", e);
+            eprintln!("wget: {}\nusage: wget [-O FILE] [-P DIR] [-c] [-q] [-S] [--header 'K: V'] [--post-data DATA | --post-file FILE] [--compressed] [--insecure] URL...", e);
             return 2;
         }
     };

@@ -75,6 +75,7 @@ file to start from scratch.
 ls /usr/share/huldra             # docs and examples
 less /usr/share/huldra/docs/packages.md
 
+help                             # the built-in help: help commands, help git...
 pkg add fortune cowsay           # declare packages and switch
 fortune | cowsay
 pkg generations; pkg rollback    # every change can be undone
@@ -82,6 +83,10 @@ pkg generations; pkg rollback    # every change can be undone
 cc -run /usr/share/huldra/examples/primes.c 100
 edit hello.c                     # Ctrl+S saves, Ctrl+Q quits
 fm                               # two-panel file manager
+
+wget https://example.com/        # HTTPS with certificate checks
+git clone --depth 1 https://github.com/villetacore/huldra.git
+browse                           # the text web browser (web: in a window)
 
 ifconfig; ping 10.0.2.2
 httpd &                          # then open http://localhost:8080 on the host

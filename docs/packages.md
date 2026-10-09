@@ -179,7 +179,9 @@ stays complete. `pkg gc` removes store paths that no generation refers to;
   itself.
 
 Not yet: package signatures. Today the checksums come from the index, which
-is fetched over plain HTTP. See the [roadmap](roadmap.md).
+is only as trustworthy as the way it was fetched: use an `https://`
+repository (certificates are checked) for anything beyond the local
+QEMU setup. See the [roadmap](roadmap.md).
 
 ## Writing packages
 

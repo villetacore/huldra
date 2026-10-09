@@ -7,7 +7,8 @@ Contributions are welcome; see [CONTRIBUTING](../CONTRIBUTING.md).
 ## Packages
 
 - [ ] **Signed repository indexes** (ed25519). Today checksums come from
-      an index fetched over plain HTTP.
+      the index, which is only as trustworthy as its transport: serve the
+      repository over HTTPS.
 - [ ] Version constraints in `depends` (`libfoo>=1.2`), plus `provides`
       and `conflicts`.
 - [ ] Manage the base system (`/bin`, the kernel) as packages, so that a
@@ -29,7 +30,21 @@ Contributions are welcome; see [CONTRIBUTING](../CONTRIBUTING.md).
 
 - [ ] IPv6.
 - [ ] TCP congestion control and reassembly of out-of-order segments.
-- [ ] TLS (an HTTPS client for `wget` and `pkg`).
+- [x] HTTPS: TLS 1.3 with certificate verification (`wget`, `git`, `pkg`, browsers).
+- [ ] TLS 1.2 for servers that do not speak 1.3; the P-256 key exchange.
+- [ ] Keep-alive connections (one request per connection today).
+
+## Git
+
+- [x] clone, fetch, pull (fast-forward), commit, push over smart HTTP(S).
+- [ ] Merges (three-way, with conflicts), rebase, stash.
+- [ ] Delta compression when pushing; streaming large packs to disk.
+- [ ] SSH transport.
+
+## Web browsers
+
+- [x] `browse` and `web`: HTML, links, forms, tables, history, HTTPS.
+- [ ] A little CSS (`display: none`, colors), images in `web`, cookies.
 
 ## C compiler
 

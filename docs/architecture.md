@@ -169,6 +169,13 @@ declaratively; see [packages](packages.md).
 | `huldra-hcc` | the C compiler |
 | `huldra-net` | TCP/IP without I/O, tested with two stacks on a lossy "wire" |
 | `huldra-pkg` | package format, index, versions, dependency resolution, declarative system model |
+| `huldra-crypto` | SHA-1/2, HMAC, HKDF, ChaCha20-Poly1305, AES-GCM, X25519, RSA and ECDSA verification |
+| `huldra-tls` | TLS 1.3 client and X.509 chain verification |
+| `huldra-http` | URLs, HTTP/1.1 requests and an incremental response parser |
+| `huldra-flate` | DEFLATE, zlib and gzip |
+| `huldra-git` | git objects, packs, the index, smart HTTP, diffs |
+| `huldra-web` | HTML parser and text layout for the browsers |
+| `huldra-md` | Markdown to terminal text (for `help`) |
 | `huldra-gfx` | drawing, fonts, display protocol, keymaps, terminal emulator core, tiling, theme |
 
 ## Design rules

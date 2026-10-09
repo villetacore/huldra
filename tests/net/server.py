@@ -11,6 +11,7 @@ Serves the same handler over HTTP and HTTPS (TLS 1.3 only):
   /big              1 MiB of predictable bytes, with Range support
   /echo             POST: echoes the body back
   /page.html        an HTML page with links and a form (for the browser)
+  /upload/NAME      POST: stores the body in GIT_ROOT/uploads/NAME
   /git/...          repositories under GIT_ROOT through `git http-backend`
                     (smart HTTP, push allowed)
 """
@@ -112,6 +113,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         body = self.rfile.read(n)
         if self.path.startswith("/git/") and GIT_ROOT:
             self.git(body)
+        elif self.path.startswith("/upload/") and GIT_ROOT:
+            name = os.path.basename(self.path[8:])
+            os.makedirs(os.path.join(GIT_ROOT, "uploads"), exist_ok=True)
+            open(os.path.join(GIT_ROOT, "uploads", name), "wb").write(body)
+            self.send(200, b"stored %d bytes\n" % len(body))
         elif self.path == "/echo":
             self.send(200, b"you sent: " + body + b"\n")
         else:

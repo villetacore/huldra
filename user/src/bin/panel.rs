@@ -17,6 +17,7 @@ const CLOCK_W: i32 = 80;
 
 const APPS: &[(&str, &str)] = &[
     ("Terminal", "term"),
+    ("Web browser", "web"),
     ("Files", "files"),
     ("Clock", "clock"),
     ("Calculator", "calc"),

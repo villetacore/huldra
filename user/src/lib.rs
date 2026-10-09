@@ -8,6 +8,7 @@
 
 extern crate alloc;
 
+pub mod browser;
 pub mod env;
 pub mod fs;
 pub mod gui;

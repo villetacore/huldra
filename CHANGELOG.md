@@ -7,6 +7,48 @@
 
 ## [Unreleased]
 
+### Добавлено
+
+- **HTTPS.** Собственный TLS 1.3 (`libs/tls`): X25519,
+  ChaCha20-Poly1305 и AES-128-GCM, подписи сервера ECDSA (P-256, P-384) и
+  RSA-PSS, проверка цепочки сертификатов X.509 до корневых, имени хоста
+  (SAN, `*.`-маски, IP) и срока действия. Корневые сертификаты берутся из
+  `/etc/ssl/certs` (сборка кладёт туда набор хоста).
+- `libs/crypto`: SHA-1/256/384/512, HMAC, HKDF, ChaCha20-Poly1305,
+  AES-GCM, X25519, проверка подписей RSA (PKCS#1 v1.5, PSS) и ECDSA; всё
+  сверено с векторами из OpenSSL (через Python `cryptography`).
+- Криптостойкий генератор случайных чисел в ядре (ChaCha20 с затиранием
+  ключа, засев от RDSEED/RDRAND, дрожания таймера и прерываний) для
+  `/dev/urandom` и `getrandom`.
+- `libs/flate` (DEFLATE, zlib, gzip), `libs/http` (URL по RFC 3986,
+  HTTP/1.1, разбор ответов с chunked) и HTTP(S)-клиент для программ с
+  редиректами и gzip.
+- `wget`: HTTPS, несколько URL, докачка `-c`, `-P`, `-S`, `--header`,
+  `--post-data`, `--post-file`, `--compressed`, `--insecure`, полоса
+  прогресса со скоростью и оставшимся временем.
+- **`git`**: `init`, `clone` (и `--depth`), `status`, `add`, `rm`,
+  `restore`, `commit`, `log`, `diff`, `show`, `branch`, `checkout`/`switch`,
+  `reset`, `fetch`, `pull` (fast-forward), `push`, `tag`, `remote`,
+  `config`, `rev-parse`, `cat-file`. Совместим с настоящим git: pack-файлы
+  с `.idx`, индекс, smart HTTP(S), работает с GitHub. Тесты пушат в
+  `git http-backend` и проверяют результат через `git fsck --strict`.
+- **Веб-браузеры** на общем движке `libs/web`: `browse` для терминала и
+  `web` в окне (есть в меню рабочего стола). HTML с незакрытыми тегами и
+  сущностями, списки, таблицы (с `colspan`), формы GET/POST, история,
+  поиск через DuckDuckGo Lite, локальные файлы и каталоги.
+- **`help`** (и `man`): обзор системы, `help commands` по разделам,
+  `help ИМЯ` для команды или страницы документации, `help -k СЛОВО`. Справка
+  по командам собирается из описаний программ; документация `docs/` лежит и
+  в initrd, поэтому доступна и при загрузке с ISO. `less` понимает цвета.
+- Документация: `docs/git.md`, `docs/browser.md`, переписана
+  `docs/networking.md`.
+- `head -c`; `mv` между файловыми системами.
+
+### Исправлено
+
+- Консоль ядра заменяла на `�` символ UTF-8, разрезанный между двумя
+  вызовами `write`.
+
 ## [0.4.0] — 2026-10-09
 
 ### Добавлено

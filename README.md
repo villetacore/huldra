@@ -13,6 +13,8 @@
 [Getting started](docs/getting-started.md) ·
 [Documentation](docs/README.md) ·
 [Packages](docs/packages.md) ·
+[Git](docs/git.md) ·
+[Browser](docs/browser.md) ·
 [Architecture](docs/architecture.md) ·
 [Contributing](CONTRIBUTING.md) ·
 [Русский](README.ru.md)
@@ -22,9 +24,11 @@
 ---
 
 Huldra is a monolithic kernel with Linux-compatible system calls, an ext2
-root file system, a TCP/IP stack, a C compiler that runs inside the system, a
-**NixOS-style declarative package manager**, and an X11-like graphical
-session with stacking and tiling window managers. All of it is styled like an
+root file system, a TCP/IP stack with **HTTPS (TLS 1.3)**, a **git client**
+that pushes to GitHub, **web browsers** for the terminal and the desktop, a C
+compiler that runs inside the system, a **NixOS-style declarative package
+manager**, and an X11-like graphical session with stacking and tiling window
+managers. All of it is styled like an
 old green phosphor terminal.
 
 It runs unmodified static Linux binaries (glibc) and builds on **stable**
@@ -76,8 +80,14 @@ root@huldra:~# fortune | cowsay
                 ||----w |
                 ||     ||
 root@huldra:~# pkg remove fortune && pkg rollback    # every change can be undone
+root@huldra:~# git clone --depth 1 https://github.com/villetacore/huldra.git
+Cloning into 'huldra'...
+Received 658 objects, 882 KiB in 6.7s
+Checked out 'main' (457 files)
+root@huldra:~# browse news.ycombinator.com              # or `web` on the desktop
 root@huldra:~# echo 'int main(void){ printf("%d\n", 6*7); }' > a.c && cc -run a.c
 42
+root@huldra:~# help commands                           # everything, documented in the system
 ```
 
 ## Features
@@ -136,6 +146,24 @@ root@huldra:~# echo 'int main(void){ printf("%d\n", 6*7); }' > a.c && cc -run a.
 - BSD sockets with Linux numbers. [More →](docs/networking.md)
 
 </td></tr>
+<tr><td valign="top">
+
+**The internet, from scratch**
+- HTTPS: TLS 1.3 with X25519, ChaCha20-Poly1305/AES-GCM, ECDSA/RSA and
+  certificate chains, with all the crypto written here and checked against OpenSSL
+- `wget` with resume and progress; a kernel CSPRNG
+- [More →](docs/networking.md)
+
+</td><td valign="top">
+
+**git and web browsers**
+- `git` clones from GitHub, commits and pushes, compatible with real git
+  (packs, index, smart HTTP). [More →](docs/git.md)
+- `browse` (terminal) and `web` (window): HTML, tables, forms, history.
+  [More →](docs/browser.md)
+- `help` and `man` with the docs inside the system
+
+</td></tr>
 </table>
 
 ## How it fits together
@@ -146,7 +174,8 @@ user space   init · sh · pkg · cc · display · boxwm/tilewm · term · Linux
 ───────────────────────── Linux x86_64 system calls ─────────────────────────
 kernel       syscall · proc · task · fs (VFS, ext2, symlinks) · net · mm · drivers · arch
 libs/        no_std crates shared by kernel, user space and xtask: ext2, TCP/IP,
-             hcc, pkg, gfx, ELF, tar/SHA-256, allocators (unit-tested on the host)
+             TLS, crypto, HTTP, git, HTML, hcc, pkg, gfx, zlib, ELF, allocators
+             (all unit-tested on the host)
 xtask        build, disk images, initrd, ISO, QEMU, package repository, tests
 ```
 
@@ -157,7 +186,9 @@ Details are in [architecture](docs/architecture.md).
 `cargo xtask test` boots the real system in QEMU and drives it through the
 serial console. It covers host unit tests, hcc against gcc, in-kernel
 tests, shell sessions, a reboot with persistent data, graphics, the package
-manager, Linux binaries, and finally `e2fsck` of the disk the guest wrote.
+manager, and HTTP/HTTPS, git and the browser against servers on the host. A
+push from Huldra must pass the host's `git fsck --strict`. Then come Linux
+binaries, and finally `e2fsck` of the disk the guest wrote.
 CI runs it all on every push. See [testing](docs/testing.md).
 
 ## Project layout
@@ -165,7 +196,7 @@ CI runs it all on every push. See [testing](docs/testing.md).
 | | |
 |---|---|
 | [`kernel/`](kernel) | the kernel |
-| [`libs/`](libs) | `no_std` libraries: ext2, net, hcc, pkg, gfx, elf, archive, allocators |
+| [`libs/`](libs) | `no_std` libraries: ext2, net, tls, crypto, http, git, web, hcc, pkg, gfx, flate, md, elf, archive, allocators |
 | [`user/`](user) | the runtime library and every program |
 | [`rootfs/`](rootfs) | the base system: `/etc`, `/usr/include`, libc |
 | [`packages/`](packages) | sources of the repository's packages |

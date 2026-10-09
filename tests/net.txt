@@ -90,3 +90,22 @@
 ! first commit
 > cd /root/test && git pull
 < Already up to date
+# The text browser: a page as text, following a link, a form (POST).
+> browse https://10.0.2.2:8811/page.html | cat
+< Test page
+< Hello from the test server. a text file and the second page.
+<   • first item
+< [huldra__________] [ Send ]
+= browse https://10.0.2.2:8811/page.html\r
+= \t
+= \r
+= q
+.
+< hello over https
+= browse http://10.0.2.2:8810/page.html\r
+= \t\t\t
+= \r
+= \x15test-query\r
+= q
+.
+< you sent: q=test-query

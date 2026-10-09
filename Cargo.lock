@@ -111,6 +111,7 @@ dependencies = [
  "huldra-net",
  "huldra-pkg",
  "huldra-tls",
+ "huldra-web",
 ]
 
 [[package]]

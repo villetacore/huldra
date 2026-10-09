@@ -13,6 +13,8 @@
 [Быстрый старт](docs/getting-started.md) ·
 [Документация](docs/README.md) ·
 [Пакеты](docs/packages.md) ·
+[Git](docs/git.md) ·
+[Браузер](docs/browser.md) ·
 [Устройство](docs/architecture.md) ·
 [Как помочь](CONTRIBUTING.md) ·
 [English](README.md)
@@ -22,9 +24,11 @@
 ---
 
 Huldra — это монолитное ядро с системными вызовами Linux, корневая ФС
-ext2, свой стек TCP/IP, компилятор Си прямо внутри системы,
-**декларативный пакетный менеджер в духе NixOS** и графика, устроенная
-как X11, с плавающим и тайловым оконными менеджерами. Всё оформлено как
+ext2, свой стек TCP/IP с **HTTPS (TLS 1.3)**, **клиент git**, который
+пушит на GitHub, **веб-браузеры** для терминала и рабочего стола,
+компилятор Си прямо внутри системы, **декларативный пакетный менеджер в
+духе NixOS** и графика, устроенная как X11, с плавающим и тайловым
+оконными менеджерами. Всё оформлено как
 старый терминал с зелёным фосфорным экраном.
 
 Huldra запускает статические Linux-программы (glibc) без изменений.
@@ -77,8 +81,14 @@ root@huldra:~# fortune | cowsay
                 ||----w |
                 ||     ||
 root@huldra:~# pkg remove fortune && pkg rollback    # любое изменение откатывается
+root@huldra:~# git clone --depth 1 https://github.com/villetacore/huldra.git
+Cloning into 'huldra'...
+Received 658 objects, 882 KiB in 6.7s
+Checked out 'main' (457 files)
+root@huldra:~# browse news.ycombinator.com              # или `web` на рабочем столе
 root@huldra:~# echo 'int main(void){ printf("%d\n", 6*7); }' > a.c && cc -run a.c
 42
+root@huldra:~# help commands                           # справка по всем командам прямо в системе
 ```
 
 ## Возможности
@@ -137,6 +147,24 @@ root@huldra:~# echo 'int main(void){ printf("%d\n", 6*7); }' > a.c && cc -run a.
 - BSD-сокеты с номерами Linux. [Подробнее →](docs/networking.md)
 
 </td></tr>
+<tr><td valign="top">
+
+**Интернет с нуля**
+- HTTPS: TLS 1.3 с X25519, ChaCha20-Poly1305/AES-GCM, ECDSA/RSA и проверкой
+  цепочки сертификатов; вся криптография своя и сверена с OpenSSL
+- `wget` с докачкой и прогрессом; криптостойкий генератор случайных чисел в ядре
+- [Подробнее →](docs/networking.md)
+
+</td><td valign="top">
+
+**git и веб-браузеры**
+- `git` клонирует с GitHub, коммитит и пушит, совместим с настоящим git
+  (pack-файлы, индекс, smart HTTP). [Подробнее →](docs/git.md)
+- `browse` (терминал) и `web` (окно): HTML, таблицы, формы, история.
+  [Подробнее →](docs/browser.md)
+- `help` и `man`: документация прямо в системе
+
+</td></tr>
 </table>
 
 ## Тесты
@@ -144,8 +172,10 @@ root@huldra:~# echo 'int main(void){ printf("%d\n", 6*7); }' > a.c && cc -run a.
 `cargo xtask test` загружает настоящую систему в QEMU и управляет ею
 через последовательный порт. В набор входят unit-тесты на хосте,
 сравнение hcc с gcc, тесты внутри ядра, сценарии в shell, перезагрузка с
-сохранением данных, графика, пакетный менеджер, Linux-программы, а в
-конце — `e2fsck` диска, на который писала гостевая система. CI гоняет всё
+сохранением данных, графика и пакетный менеджер. Дальше идут HTTP/HTTPS,
+git и браузер против серверов на хосте, причём push из Huldra должен
+пройти `git fsck --strict` на хосте. Затем Linux-программы, а в конце —
+`e2fsck` диска, на который писала гостевая система. CI гоняет всё
 это на каждый push. Подробнее — в [testing](docs/testing.md).
 
 ## Структура
@@ -153,7 +183,7 @@ root@huldra:~# echo 'int main(void){ printf("%d\n", 6*7); }' > a.c && cc -run a.
 | | |
 |---|---|
 | [`kernel/`](kernel) | ядро |
-| [`libs/`](libs) | `no_std`-библиотеки: ext2, сеть, hcc, pkg, gfx, elf, архивы, аллокаторы |
+| [`libs/`](libs) | `no_std`-библиотеки: ext2, сеть, tls, crypto, http, git, web, hcc, pkg, gfx, flate, md, elf, архивы, аллокаторы |
 | [`user/`](user) | рантайм и все программы |
 | [`rootfs/`](rootfs) | базовая система: `/etc`, `/usr/include`, libc |
 | [`packages/`](packages) | исходники пакетов репозитория |

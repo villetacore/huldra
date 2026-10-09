@@ -1,0 +1,8 @@
+[package]
+name = "huldra-web"
+description = "HTML parsing and text layout for the browsers"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]

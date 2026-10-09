@@ -30,6 +30,7 @@ const BORDER_INACTIVE: u32 = theme::LINE_DIM;
 
 const MENU_ITEMS: &[(&str, &str)] = &[
     ("Terminal", "term"),
+    ("Web browser", "web"),
     ("Clock", "clock"),
     ("Calculator", "calc"),
     ("Paint", "paint"),

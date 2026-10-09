@@ -49,6 +49,54 @@ fn load(name: &str, fd: i32) -> Doc {
     Doc { name: String::from(name), lines }
 }
 
+/// Splits a line into characters with their style, interpreting SGR
+/// escape sequences (colors, bold, reverse) as `help` and `ls` print them.
+fn styled(line: &str) -> Vec<(char, Style)> {
+    let mut out = Vec::new();
+    let mut st = Style::NORMAL;
+    let mut it = line.chars().peekable();
+    while let Some(c) = it.next() {
+        if c != '\x1b' {
+            out.push((c, st));
+            continue;
+        }
+        if it.peek() != Some(&'[') {
+            continue;
+        }
+        it.next();
+        let mut params = String::new();
+        let mut fin = ' ';
+        for d in it.by_ref() {
+            if d.is_ascii_digit() || d == ';' {
+                params.push(d);
+            } else {
+                fin = d;
+                break;
+            }
+        }
+        if fin != 'm' {
+            continue;
+        }
+        for p in params.split(';') {
+            match p.parse::<u8>().unwrap_or(0) {
+                0 => st = Style::NORMAL,
+                1 => st.bold = true,
+                22 => st.bold = false,
+                7 => st.reverse = true,
+                27 => st.reverse = false,
+                n @ 30..=37 => st.fg = Some(n - 30),
+                39 => st.fg = None,
+                n @ 40..=47 => st.bg = Some(n - 40),
+                49 => st.bg = None,
+                n @ 90..=97 => st.fg = Some(n - 90 + term::BRIGHT),
+                n @ 100..=107 => st.bg = Some(n - 100 + term::BRIGHT),
+                _ => {}
+            }
+        }
+    }
+    out
+}
+
 struct Pager {
     docs: Vec<Doc>,
     current: usize,
@@ -89,10 +137,12 @@ impl Pager {
             if self.numbers {
                 self.screen.text(r, 0, &format!("{:>6}  ", self.top + r + 1), Style::fg(term::YELLOW));
             }
-            let chars: Vec<char> = line.chars().collect();
-            let visible: String = chars.iter().skip(self.left).take(cols - gutter).collect();
-            self.screen.text(r, gutter, &visible, Style::NORMAL);
+            let cells = styled(line);
+            for (i, &(c, st)) in cells.iter().skip(self.left).take(cols - gutter).enumerate() {
+                self.screen.put(r, gutter + i, c, st);
+            }
             if !self.search.is_empty() {
+                let chars: Vec<char> = cells.iter().map(|&(c, _)| c).collect();
                 let needle: Vec<char> = self.search.chars().collect();
                 let mut i = 0;
                 while i + needle.len() <= chars.len() {

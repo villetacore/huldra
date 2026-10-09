@@ -1,4 +1,4 @@
-//! cp [-r] source... dest
+//! cp [-r] source... dest: copy files (-r: directories).
 
 #![no_std]
 #![no_main]

@@ -1,3 +1,5 @@
+//! free: show used and free memory (from /proc/meminfo).
+
 #![no_std]
 #![no_main]
 

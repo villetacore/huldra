@@ -33,6 +33,23 @@
 < 0
 > cat /usr/share/huldra/README
 < ext2 file system
+> help | cat
+< Getting around
+< packages
+> help commands | cat
+< Network
+< wget
+> help ls
+< ls [-l]
+> help packages | head -2
+< Packages: a declarative system
+> man mkdir
+< missing parents
+> help -k rollback
+< help packages
+> help nosuch; echo status=$?
+< no help for 'nosuch'
+< status=1
 > /usr/share/huldra/scripts/hello.sh world
 < Hello from an ext2 disk, world
 > mkdir /root/data && echo persistent > /root/data/note && cat /root/data/note

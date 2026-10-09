@@ -1,4 +1,4 @@
-//! uname [-a|-s|-n|-r|-v|-m]
+//! uname [-a|-s|-n|-r|-v|-m]: print system information.
 
 #![no_std]
 #![no_main]

@@ -5,6 +5,7 @@
 
 mod cc;
 mod disk;
+mod help;
 mod image;
 mod qemu;
 mod repo;
@@ -234,7 +235,7 @@ fn build_user() -> Result<Vec<image::ImageFile>> {
 /// Directories copied onto the disk image: `diskfs/` and, when a Linux
 /// C compiler is available, Linux test programs in `/linux`.
 /// Everything that goes on the system disk: the base system (rootfs and
-/// programs), examples from `diskfs/` and `docs/*.md` in /usr/share/huldra,
+/// programs, help and docs), examples from `diskfs/` in /usr/share/huldra,
 /// and Linux test programs in /opt/linux-tests when gcc is available.
 fn disk_files(system: &[image::ImageFile]) -> Result<Vec<image::ImageFile>> {
     let mut files: Vec<image::ImageFile> = system
@@ -246,14 +247,6 @@ fn disk_files(system: &[image::ImageFile]) -> Result<Vec<image::ImageFile>> {
         })
         .collect();
     files.extend(disk::tree("usr/share/huldra", &root().join("diskfs"))?);
-    for doc in fs::read_dir(root().join("docs")).map_err(|e| format!("docs/: {e}"))?.flatten() {
-        let path = doc.path();
-        if path.extension().is_some_and(|x| x == "md") {
-            let name = doc.file_name().to_string_lossy().into_owned();
-            files.push(image::ImageFile { dest: format!("usr/share/huldra/docs/{name}"), source: path, mode: 0o644 });
-        }
-    }
-    files.push(image::ImageFile { dest: "usr/share/huldra/docs/overview.md".into(), source: root().join("README.md"), mode: 0o644 });
     if let Some(dir) = build_linux_programs() {
         files.extend(disk::tree("opt/linux-tests", &dir)?);
     }
@@ -319,6 +312,7 @@ fn build_linux_programs() -> Option<PathBuf> {
 fn system_files() -> Result<Vec<image::ImageFile>> {
     let mut files = image::collect_tree(&root().join("rootfs"))?;
     files.extend(build_user()?);
+    files.extend(help::files()?);
     Ok(files)
 }
 

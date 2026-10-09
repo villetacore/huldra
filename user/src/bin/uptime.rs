@@ -1,3 +1,5 @@
+//! uptime: show how long the system has been running.
+
 #![no_std]
 #![no_main]
 

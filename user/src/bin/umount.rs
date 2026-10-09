@@ -1,3 +1,5 @@
+//! umount DIR...: unmount file systems.
+
 #![no_std]
 #![no_main]
 

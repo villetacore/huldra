@@ -1,4 +1,4 @@
-//! basename PATH [SUFFIX]
+//! basename PATH [SUFFIX]: print the last component of PATH, without SUFFIX.
 
 #![no_std]
 #![no_main]

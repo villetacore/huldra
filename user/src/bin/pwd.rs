@@ -1,3 +1,5 @@
+//! pwd: print the working directory.
+
 #![no_std]
 #![no_main]
 

@@ -1,3 +1,5 @@
+//! which NAME...: print the path of each command found in PATH.
+
 #![no_std]
 #![no_main]
 

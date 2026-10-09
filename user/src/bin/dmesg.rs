@@ -1,3 +1,5 @@
+//! dmesg: print the kernel log.
+
 #![no_std]
 #![no_main]
 

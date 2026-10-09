@@ -1,4 +1,4 @@
-//! rm [-r] [-f] path...
+//! rm [-r] [-f] path...: remove files (-r: directories).
 
 #![no_std]
 #![no_main]

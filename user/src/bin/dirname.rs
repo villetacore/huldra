@@ -1,3 +1,5 @@
+//! dirname PATH: print PATH without its last component.
+
 #![no_std]
 #![no_main]
 

@@ -1,3 +1,5 @@
+//! touch FILE...: create empty files (existing files are left alone).
+
 #![no_std]
 #![no_main]
 

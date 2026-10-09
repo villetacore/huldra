@@ -1,4 +1,4 @@
-//! cmp [-s] FILE1 FILE2
+//! cmp [-s] FILE1 FILE2: compare two files byte by byte.
 
 #![no_std]
 #![no_main]

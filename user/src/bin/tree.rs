@@ -1,4 +1,4 @@
-//! tree [-a] [-L depth] [dir]
+//! tree [-a] [-L depth] [dir]: show a directory tree.
 
 #![no_std]
 #![no_main]

@@ -1,5 +1,6 @@
 //! find [path...] [-name PATTERN] [-type f|d] [-maxdepth N] [-size +N|-N[k]]
-//!      [-newer FILE] [-delete] [-exec CMD {} ;]
+//! [-newer FILE] [-delete] [-exec CMD {} ;]: search for files in a directory
+//! tree.
 
 #![no_std]
 #![no_main]

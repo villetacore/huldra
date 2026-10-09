@@ -31,16 +31,49 @@ pub fn _print(args: fmt::Arguments) {
     vga.update_cursor();
 }
 
+/// The start of a UTF-8 sequence that a write cut in the middle (buffered
+/// output splits text at arbitrary bytes); completed by the next write.
+static PARTIAL: crate::sync::SpinLock<([u8; 4], usize)> = crate::sync::SpinLock::new(([0; 4], 0));
+
+/// Length of the UTF-8 sequence a lead byte starts (0 if not a lead byte).
+fn utf8_len(lead: u8) -> usize {
+    match lead {
+        0xC2..=0xDF => 2,
+        0xE0..=0xEF => 3,
+        0xF0..=0xF4 => 4,
+        _ => 0,
+    }
+}
+
 /// Writes raw bytes (e.g. from a user process); invalid UTF-8 is replaced.
 pub fn write_bytes(bytes: &[u8]) {
     let mut vga = VGA.lock();
+    let mut partial = PARTIAL.lock();
+    let joined: alloc::vec::Vec<u8>;
+    let data = if partial.1 > 0 {
+        joined = [&partial.0[..partial.1], bytes].concat();
+        partial.1 = 0;
+        &joined[..]
+    } else {
+        bytes
+    };
     let mut sink = Sink(&mut vga);
-    for chunk in bytes.utf8_chunks() {
+    let mut chunks = data.utf8_chunks().peekable();
+    while let Some(chunk) = chunks.next() {
         let _ = sink.write_str(chunk.valid());
-        if !chunk.invalid().is_empty() {
+        let bad = chunk.invalid();
+        if bad.is_empty() {
+            continue;
+        }
+        let at_end = chunks.peek().is_none();
+        if at_end && bad.len() < utf8_len(bad[0]) {
+            partial.0[..bad.len()].copy_from_slice(bad);
+            partial.1 = bad.len();
+        } else {
             let _ = sink.write_str("\u{FFFD}");
         }
     }
+    drop(partial);
     vga.update_cursor();
 }
 

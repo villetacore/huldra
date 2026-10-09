@@ -1,4 +1,4 @@
-//! seq [-s SEP] [FIRST [INCREMENT]] LAST
+//! seq [-s SEP] [FIRST [INCREMENT]] LAST: print a sequence of numbers.
 
 #![no_std]
 #![no_main]

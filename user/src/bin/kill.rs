@@ -1,4 +1,4 @@
-//! kill [-SIGNAL] pid...
+//! kill [-SIGNAL] pid...: send a signal to processes.
 
 #![no_std]
 #![no_main]

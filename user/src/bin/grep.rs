@@ -1,4 +1,4 @@
-//! grep [-i] [-v] [-n] [-c] [-q] PATTERN [file...] (fixed-string matching)
+//! grep [-i] [-v] [-n] [-c] [-q] PATTERN [file...]: print lines that contain PATTERN (fixed-string matching).
 
 #![no_std]
 #![no_main]

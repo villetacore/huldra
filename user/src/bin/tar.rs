@@ -1,4 +1,4 @@
-//! tar -c|-x|-t [-v] [-C DIR] -f ARCHIVE [paths...]  (ustar, uncompressed)
+//! tar -c|-x|-t [-v] [-C DIR] -f ARCHIVE [paths...]: create, extract or list tar archives (ustar, uncompressed).
 
 #![no_std]
 #![no_main]

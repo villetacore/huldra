@@ -1,3 +1,5 @@
+//! false: do nothing, unsuccessfully (exit status 1).
+
 #![no_std]
 #![no_main]
 

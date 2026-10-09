@@ -1,3 +1,5 @@
+//! reboot: flush the disks and restart the machine.
+
 #![no_std]
 #![no_main]
 

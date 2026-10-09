@@ -1,3 +1,6 @@
+//! echo [-n] [word...]: print the words separated by spaces; -n omits the
+//! newline.
+
 #![no_std]
 #![no_main]
 

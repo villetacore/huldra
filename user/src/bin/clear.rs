@@ -1,3 +1,5 @@
+//! clear: clear the terminal screen.
+
 #![no_std]
 #![no_main]
 

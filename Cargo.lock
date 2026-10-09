@@ -52,6 +52,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "huldra-md"
+version = "0.4.0"
+
+[[package]]
 name = "huldra-net"
 version = "0.4.0"
 
@@ -71,6 +75,7 @@ dependencies = [
  "huldra-gfx",
  "huldra-hcc",
  "huldra-kalloc",
+ "huldra-md",
  "huldra-net",
  "huldra-pkg",
 ]

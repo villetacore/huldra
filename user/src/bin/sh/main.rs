@@ -1,9 +1,20 @@
-//! /bin/sh: a POSIX-flavoured shell.
+//! sh [-c COMMAND | SCRIPT [ARG...]]: the shell, POSIX-flavoured.
 //!
 //! Pipelines, `;` `&&` `||`, background jobs, redirections, quoting,
 //! parameter and command substitution (`$VAR`, `$(cmd)`), globbing,
 //! `if`/`while`/`until`/`for`, functions, `{ }` and `( )` groups, and an
 //! interactive line editor with history and tab completion.
+//!
+//!   Syntax:   a | b    a ; b    a && b    a || b    a &    ( list )    { list; }
+//!             > file   >> file   < file   2> file   2>&1
+//!             $VAR  ${VAR}  $?  $1  $(cmd)  $((1 + 2))  *.txt
+//!             if c; then ...; elif c; then ...; else ...; fi
+//!             while c; do ...; done     until c; do ...; done
+//!             for x in a b c; do ...; done      name() { ...; }
+//!   Builtins: cd pwd echo export unset set shift read test [ source . eval
+//!             exec exit return break continue jobs wait type history true false
+//!   Keys:     arrows/Home/End edit the line, Up/Down history, Tab completes,
+//!             Ctrl+A/E/U/K/W/L, Ctrl+C cancels, Ctrl+D exits
 
 #![no_std]
 #![no_main]
@@ -24,19 +35,6 @@ use exec::Shell;
 use huldra_user::{env, eprintln, fs, io, print, process, signal, sys, term};
 
 huldra_user::main!(main);
-
-pub const HELP: &str = "\
-Huldra shell
-  Syntax:   a | b    a ; b    a && b    a || b    a &    ( list )    { list; }
-            > file   >> file   < file   2> file   2>&1   $VAR  ${VAR}  $?  $1  $(cmd)  *.txt
-            if c; then ...; elif c; then ...; else ...; fi
-            while c; do ...; done     until c; do ...; done
-            for x in a b c; do ...; done      name() { ...; }
-  Builtins: cd pwd echo export unset set shift read test [ source . eval exec
-            exit return break continue jobs wait type history help true false
-  Keys:     arrows/Home/End edit the line, Up/Down history, Tab completes,
-            Ctrl+A/E/U/K/W/L, Ctrl+C cancels, Ctrl+D exits
-Programs are in /bin and /sbin (ls /bin).";
 
 extern "C" fn on_interrupt(_sig: i32) {}
 

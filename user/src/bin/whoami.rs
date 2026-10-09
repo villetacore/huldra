@@ -1,3 +1,5 @@
+//! whoami: print the user name.
+
 #![no_std]
 #![no_main]
 

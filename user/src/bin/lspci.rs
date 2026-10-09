@@ -1,3 +1,5 @@
+//! lspci: list PCI devices.
+
 #![no_std]
 #![no_main]
 

@@ -1,4 +1,4 @@
-//! ls [-l] [-a] [-1] [path...]
+//! ls [-l] [-a] [-1] [path...]: list directory contents.
 
 #![no_std]
 #![no_main]

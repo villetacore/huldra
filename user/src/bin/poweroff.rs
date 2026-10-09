@@ -1,3 +1,5 @@
+//! poweroff: flush the disks and turn the machine off.
+
 #![no_std]
 #![no_main]
 

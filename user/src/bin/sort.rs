@@ -1,4 +1,4 @@
-//! sort [-r] [-n] [-u] [-f] [-k N] [-t SEP] [file...]
+//! sort [-r] [-n] [-u] [-f] [-k N] [-t SEP] [file...]: sort lines of text.
 
 #![no_std]
 #![no_main]

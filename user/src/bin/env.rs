@@ -1,3 +1,5 @@
+//! env: print the environment, one NAME=value per line.
+
 #![no_std]
 #![no_main]
 

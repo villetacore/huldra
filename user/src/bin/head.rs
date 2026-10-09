@@ -1,4 +1,4 @@
-//! head [-n N] [file...]
+//! head [-n N] [file...]: print the first lines of files.
 
 #![no_std]
 #![no_main]

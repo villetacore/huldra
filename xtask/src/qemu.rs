@@ -141,6 +141,8 @@ pub fn kernel_tests(a: &Artifacts) -> Result {
 struct Console {
     stream: TcpStream,
     buffer: String,
+    /// Bytes of a UTF-8 character split between two reads.
+    partial: Vec<u8>,
 }
 
 /// Decodes `\r`, `\n`, `\t`, `\e` and `\xNN` in test scripts.
@@ -222,7 +224,15 @@ impl Console {
             match self.stream.read(&mut buf) {
                 Ok(0) => return Err(format!("QEMU closed the serial port; output:\n{clean}")),
                 Ok(n) => {
-                    self.buffer.push_str(&String::from_utf8_lossy(&buf[..n]));
+                    self.partial.extend_from_slice(&buf[..n]);
+                    // Keep an incomplete character for the next read.
+                    let keep = match std::str::from_utf8(&self.partial) {
+                        Err(e) if e.error_len().is_none() => self.partial.len() - e.valid_up_to(),
+                        _ => 0,
+                    };
+                    let done = self.partial.len() - keep;
+                    self.buffer.push_str(&String::from_utf8_lossy(&self.partial[..done]));
+                    self.partial.drain(..done);
                     seen_prompt_at = None;
                 }
                 Err(e)
@@ -287,6 +297,7 @@ pub fn shell_session(a: &Artifacts, script: &Path) -> Result {
     let mut console = Console {
         stream,
         buffer: String::new(),
+        partial: Vec::new(),
     };
 
     let result = (|| -> Result {

@@ -1,3 +1,5 @@
+//! sync: write cached data to the disks.
+
 #![no_std]
 #![no_main]
 

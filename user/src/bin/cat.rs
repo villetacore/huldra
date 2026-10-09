@@ -1,3 +1,5 @@
+//! cat [file...]: print files (or standard input) to standard output.
+
 #![no_std]
 #![no_main]
 

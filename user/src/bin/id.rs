@@ -1,3 +1,5 @@
+//! id: print the user and group ids (always root: there are no users yet).
+
 #![no_std]
 #![no_main]
 

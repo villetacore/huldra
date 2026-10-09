@@ -1,4 +1,4 @@
-//! tr [-d] [-s] SET1 [SET2]  (ranges like a-z, escapes \n \t)
+//! tr [-d] [-s] SET1 [SET2]: translate or delete characters (ranges like a-z, escapes \n \t).
 
 #![no_std]
 #![no_main]

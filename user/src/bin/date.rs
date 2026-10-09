@@ -1,3 +1,6 @@
+//! date [+%s]: print the current date and time (UTC); +%s prints seconds
+//! since 1970.
+
 #![no_std]
 #![no_main]
 

@@ -1,4 +1,5 @@
-//! cc [-o out] [-E] [-I dir] [-D name[=value]] [-run] file.c... [-- args]
+//! cc [-o out] [-E] [-I dir] [-D name[=value]] [-run] file.c... [-- args]:
+//! compile C programs (hcc).
 //!
 //! The Huldra C compiler (hcc). Compiles the given sources together with
 //! the C library from /usr/lib/hcc into a static executable; there are no

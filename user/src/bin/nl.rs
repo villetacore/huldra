@@ -1,3 +1,5 @@
+//! nl [file...]: print lines with line numbers.
+
 #![no_std]
 #![no_main]
 

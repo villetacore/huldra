@@ -38,7 +38,7 @@ pub struct Shell {
 }
 
 pub const BUILTINS: &[&str] = &[
-    ".", ":", "[", "break", "cd", "continue", "echo", "eval", "exec", "exit", "export", "false", "help", "history",
+    ".", ":", "[", "break", "cd", "continue", "echo", "eval", "exec", "exit", "export", "false", "history",
     "jobs", "pwd", "read", "return", "set", "shift", "source", "test", "true", "type", "unset", "wait",
 ];
 
@@ -729,10 +729,6 @@ impl Shell {
                 for (i, h) in self.history.iter().enumerate() {
                     huldra_user::println!("{:>5}  {}", i + 1, h);
                 }
-                0
-            }
-            "help" => {
-                huldra_user::println!("{}", crate::HELP);
                 0
             }
             _ => 127,

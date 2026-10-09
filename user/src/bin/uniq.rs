@@ -1,4 +1,4 @@
-//! uniq [-c] [-d] [-u] [-i] [file]
+//! uniq [-c] [-d] [-u] [-i] [file]: filter repeated adjacent lines.
 
 #![no_std]
 #![no_main]

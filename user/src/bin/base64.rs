@@ -1,4 +1,4 @@
-//! base64 [-d] [file]
+//! base64 [-d] [file]: encode (or with -d decode) base64.
 
 #![no_std]
 #![no_main]

@@ -1,4 +1,4 @@
-//! sha256sum [-c] [file...]
+//! sha256sum [-c] [file...]: print or check SHA-256 checksums.
 
 #![no_std]
 #![no_main]

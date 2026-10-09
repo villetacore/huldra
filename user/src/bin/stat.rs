@@ -1,3 +1,5 @@
+//! stat PATH...: show file type, size, mode, inode and times.
+
 #![no_std]
 #![no_main]
 

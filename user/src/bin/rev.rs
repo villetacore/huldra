@@ -1,3 +1,5 @@
+//! rev [file...]: print each line reversed.
+
 #![no_std]
 #![no_main]
 

@@ -1,4 +1,4 @@
-//! tail [-n N] [file]
+//! tail [-n N] [file]: print the last lines of a file.
 
 #![no_std]
 #![no_main]

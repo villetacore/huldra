@@ -1,3 +1,5 @@
+//! yes [word...]: print the words (or y) forever.
+
 #![no_std]
 #![no_main]
 

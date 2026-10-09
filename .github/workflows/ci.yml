@@ -44,6 +44,9 @@ jobs:
       - name: Build (release)
         run: cargo xtask build --release
 
+      - name: Build tool tests (help generation, every program documented)
+        run: cargo test -p xtask
+
       - name: Test
         run: cargo xtask test
 

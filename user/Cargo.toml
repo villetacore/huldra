@@ -18,3 +18,4 @@ huldra-hcc = { path = "../libs/hcc" }
 huldra-net = { path = "../libs/net" }
 huldra-pkg = { path = "../libs/pkg" }
 huldra-gfx = { path = "../libs/gfx" }
+huldra-md = { path = "../libs/md" }

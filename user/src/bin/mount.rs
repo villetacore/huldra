@@ -1,4 +1,5 @@
-//! mount [-t type] source target   |   mount (list)
+//! mount [-t TYPE] SOURCE TARGET: mount a file system; without arguments,
+//! list the mounts.
 
 #![no_std]
 #![no_main]

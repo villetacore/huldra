@@ -1,3 +1,5 @@
+//! mkdir [-p] DIR...: create directories; -p creates missing parents too.
+
 #![no_std]
 #![no_main]
 

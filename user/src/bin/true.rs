@@ -1,3 +1,5 @@
+//! true: do nothing, successfully.
+
 #![no_std]
 #![no_main]
 

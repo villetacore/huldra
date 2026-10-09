@@ -1,3 +1,5 @@
+//! mv SOURCE... DEST: move or rename files and directories.
+
 #![no_std]
 #![no_main]
 

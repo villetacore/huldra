@@ -1,3 +1,5 @@
+//! rmdir DIR...: remove empty directories.
+
 #![no_std]
 #![no_main]
 

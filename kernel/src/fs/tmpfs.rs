@@ -138,6 +138,29 @@ impl Inode for TmpInode {
         Ok(node)
     }
 
+    fn symlink(&self, name: &str, target: &str) -> KResult<()> {
+        let mut data = self.data.lock();
+        let Data::Dir(d) = &mut *data else {
+            return Err(Errno::ENOTDIR);
+        };
+        if d.contains_key(name) {
+            return Err(Errno::EEXIST);
+        }
+        let node = TmpInode::new(self.dev, NEXT_INO.fetch_add(1, Ordering::Relaxed), FileType::Symlink, 0o777);
+        *node.data.lock() = Data::File(target.as_bytes().to_vec());
+        d.insert(name.to_string(), node);
+        drop(data);
+        self.touch();
+        Ok(())
+    }
+
+    fn readlink(&self) -> KResult<String> {
+        match (&*self.data.lock(), self.kind) {
+            (Data::File(v), FileType::Symlink) => Ok(String::from_utf8_lossy(v).into_owned()),
+            _ => Err(Errno::EINVAL),
+        }
+    }
+
     fn unlink(&self, name: &str) -> KResult<()> {
         let mut data = self.data.lock();
         let Data::Dir(d) = &mut *data else {

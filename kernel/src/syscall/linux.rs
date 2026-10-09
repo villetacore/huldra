@@ -242,10 +242,7 @@ pub fn sched_getaffinity(a: &mut Args) -> KResult<Ret> {
 fn readlink_path(path: &str, buf: u64, size: u64) -> KResult<Ret> {
     let target: String = match path {
         "/proc/self/exe" => sched::current().proc.lock().exe.clone(),
-        p => {
-            fs::stat(p)?;
-            return Err(Errno::EINVAL); // not a symbolic link
-        }
+        p => fs::readlink(p)?,
     };
     let n = target.len().min(size as usize);
     uaccess::copy_to_user(buf, &target.as_bytes()[..n])?;

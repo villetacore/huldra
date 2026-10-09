@@ -3,6 +3,7 @@
 use super::vfs::*;
 use crate::drivers::block::Disk;
 use crate::sync::Mutex;
+use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::any::Any;
@@ -160,6 +161,14 @@ impl Inode for Ext2Inode {
         Ok(self.fs.node(ino))
     }
 
+    fn symlink(&self, name: &str, target: &str) -> KResult<()> {
+        self.fs.inner.lock().symlink(self.ino, name, target).map(drop).map_err(errno)
+    }
+
+    fn readlink(&self) -> KResult<String> {
+        self.fs.inner.lock().read_link(self.ino).map_err(errno)
+    }
+
     fn unlink(&self, name: &str) -> KResult<()> {
         self.fs.inner.lock().unlink(self.ino, name).map_err(errno)
     }
@@ -186,10 +195,10 @@ impl Inode for Ext2Inode {
             .map(|e| DirEntry {
                 name: e.name,
                 ino: e.ino as u64,
-                kind: if e.file_type == ext2::FT_DIR {
-                    FileType::Directory
-                } else {
-                    FileType::Regular
+                kind: match e.file_type {
+                    ext2::FT_DIR => FileType::Directory,
+                    ext2::FT_SYMLINK => FileType::Symlink,
+                    _ => FileType::Regular,
                 },
             })
             .collect())

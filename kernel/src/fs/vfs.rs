@@ -1,11 +1,13 @@
 //! Virtual file system core: the `Inode` and `FileSystem` traits, the mount
 //! table and path resolution.
 //!
-//! Paths are resolved lexically: callers turn a path into a normalized
-//! absolute path (resolving `.` and `..` against the working directory), then
-//! [`lookup`] walks it from the root, crossing into mounted file systems at
-//! mount points. There are no symbolic links yet, so this matches POSIX
-//! semantics.
+//! Callers turn a path into a normalized absolute path (resolving `.` and
+//! `..` against the working directory lexically), then [`lookup`] walks it
+//! from the root, crossing into mounted file systems at mount points and
+//! following symbolic links. A link's target is spliced into the rest of
+//! the path, so `..` inside a target is resolved physically; `..` in the
+//! path the caller gave was already resolved lexically (like a shell's
+//! logical working directory).
 
 use crate::sync::SpinLock;
 use alloc::collections::BTreeMap;
@@ -21,6 +23,8 @@ pub type KResult<T> = Result<T, Errno>;
 
 pub const PATH_MAX: usize = 4096;
 pub const NAME_MAX: usize = 255;
+/// Symbolic links followed in one lookup before giving up with `ELOOP`.
+pub const MAX_SYMLINKS: usize = 40;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum FileType {
@@ -164,6 +168,16 @@ pub trait Inode: Send + Sync + Any {
 
     fn create(&self, _name: &str, _kind: FileType, _perm: u32) -> KResult<Arc<dyn Inode>> {
         Err(Errno::ENOTDIR)
+    }
+
+    /// Creates the symbolic link `name` pointing to `target`.
+    fn symlink(&self, _name: &str, _target: &str) -> KResult<()> {
+        Err(if self.metadata().is_dir() { Errno::EPERM } else { Errno::ENOTDIR })
+    }
+
+    /// The target of a symbolic link.
+    fn readlink(&self) -> KResult<String> {
+        Err(Errno::EINVAL)
     }
 
     /// Removes the entry `name`. Directories must be empty (checked by the VFS).
@@ -365,23 +379,81 @@ pub fn normalize(cwd: &str, path: &str) -> KResult<String> {
     Ok(out)
 }
 
-/// Looks up a normalized absolute path.
+/// Looks up a normalized absolute path, following symbolic links.
 pub fn lookup(path: &str) -> KResult<Arc<dyn Inode>> {
+    Ok(walk(path, true)?.0)
+}
+
+/// Like [`lookup`], but a symbolic link as the last component is returned
+/// itself (`lstat`, `readlink`).
+pub fn lookup_nofollow(path: &str) -> KResult<Arc<dyn Inode>> {
+    Ok(walk(path, false)?.0)
+}
+
+/// The path with every symbolic link resolved (`realpath`).
+pub fn canonical(path: &str) -> KResult<String> {
+    Ok(walk(path, true)?.1)
+}
+
+/// Walks `path` from the root. Returns the node and its canonical path.
+fn walk(path: &str, follow_last: bool) -> KResult<(Arc<dyn Inode>, String)> {
     let mounts = mount_table();
-    let mut node = mounts.get("/").ok_or(Errno::ENOENT)?.fs.root();
+    let root = mounts.get("/").ok_or(Errno::ENOENT)?.fs.root();
+    let node_at = |current: &str, node: Arc<dyn Inode>| match mounts.get(current) {
+        Some(m) => m.fs.root(),
+        None => node,
+    };
+    // Components still to visit, last one first.
+    let mut pending: Vec<String> = path.split('/').filter(|c| !c.is_empty()).rev().map(String::from).collect();
+    let mut node = root.clone();
     let mut current = String::with_capacity(path.len());
-    for comp in path.split('/').filter(|c| !c.is_empty()) {
+    let mut links = 0;
+    while let Some(comp) = pending.pop() {
+        match comp.as_str() {
+            "." => continue,
+            ".." => {
+                // Only reached through a link target; `current` has no links,
+                // so walking it again is a plain lookup.
+                let cut = current.rfind('/').unwrap_or(0);
+                current.truncate(cut);
+                node = root.clone();
+                let mut prefix = String::with_capacity(current.len());
+                for c in current.split('/').filter(|c| !c.is_empty()) {
+                    node = node.lookup(c)?;
+                    prefix.push('/');
+                    prefix.push_str(c);
+                    node = node_at(&prefix, node);
+                }
+                continue;
+            }
+            _ => {}
+        }
         if !node.metadata().is_dir() {
             return Err(Errno::ENOTDIR);
         }
-        node = node.lookup(comp)?;
-        current.push('/');
-        current.push_str(comp);
-        if let Some(m) = mounts.get(&current) {
-            node = m.fs.root();
+        let child = node.lookup(&comp)?;
+        let last = pending.is_empty();
+        if child.metadata().kind == FileType::Symlink && (follow_last || !last) {
+            links += 1;
+            if links > MAX_SYMLINKS {
+                return Err(Errno::ELOOP);
+            }
+            let target = child.readlink()?;
+            if target.starts_with('/') {
+                current.clear();
+                node = root.clone();
+            }
+            pending.extend(target.split('/').filter(|c| !c.is_empty()).rev().map(String::from));
+            continue;
         }
+        current.push('/');
+        current.push_str(&comp);
+        node = node_at(&current, child);
     }
-    Ok(node)
+    if current.is_empty() {
+        current.push('/');
+    }
+    Ok((node, current))
 }
 
 /// Splits a normalized absolute path into its parent directory and last

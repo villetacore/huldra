@@ -94,6 +94,24 @@ pub fn is_dir(st: &Stat) -> bool {
     st.st_mode & S_IFMT == S_IFDIR
 }
 
+pub fn is_symlink(st: &Stat) -> bool {
+    st.st_mode & S_IFMT == S_IFLNK
+}
+
+/// Metadata of `path` itself, even if it is a symbolic link.
+pub fn symlink_metadata(path: &str) -> Result<Stat> {
+    sys::lstat(path)
+}
+
+/// Creates the symbolic link `path` pointing to `target`.
+pub fn symlink(target: &str, path: &str) -> Result<()> {
+    sys::symlink(target, path)
+}
+
+pub fn read_link(path: &str) -> Result<String> {
+    sys::readlink(path)
+}
+
 #[derive(Clone)]
 pub struct DirEntry {
     pub name: String,
@@ -104,6 +122,10 @@ pub struct DirEntry {
 impl DirEntry {
     pub fn is_dir(&self) -> bool {
         self.d_type == DT_DIR
+    }
+
+    pub fn is_symlink(&self) -> bool {
+        self.d_type == DT_LNK
     }
 }
 
@@ -163,9 +185,10 @@ pub fn remove_dir(path: &str) -> Result<()> {
     sys::rmdir(path)
 }
 
-/// Removes a file or a directory tree.
+/// Removes a file or a directory tree. Symbolic links are removed, never
+/// followed.
 pub fn remove_all(path: &str) -> Result<()> {
-    let st = sys::stat(path)?;
+    let st = sys::lstat(path)?;
     if is_dir(&st) {
         for e in read_dir(path)? {
             remove_all(&join(path, &e.name))?;

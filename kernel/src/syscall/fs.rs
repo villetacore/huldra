@@ -165,6 +165,25 @@ pub fn stat(a: &mut Args) -> KResult<Ret> {
     value(0)
 }
 
+pub fn lstat(a: &mut Args) -> KResult<Ret> {
+    let path = path_at(AT_FDCWD, a.a0())?;
+    let st = fs::lstat(&path)?.to_stat();
+    uaccess::write_user(a.a1(), &st)?;
+    value(0)
+}
+
+pub fn symlink(a: &mut Args) -> KResult<Ret> {
+    let target = uaccess::read_path(a.a0())?;
+    fs::symlink(&target, &path_at(AT_FDCWD, a.a1())?)?;
+    value(0)
+}
+
+pub fn symlinkat(a: &mut Args) -> KResult<Ret> {
+    let target = uaccess::read_path(a.a0())?;
+    fs::symlink(&target, &path_at(a.a1() as i32, a.a2())?)?;
+    value(0)
+}
+
 pub fn fstat(a: &mut Args) -> KResult<Ret> {
     let st = file(a.a0())?.inode.metadata().to_stat();
     uaccess::write_user(a.a1(), &st)?;
@@ -177,7 +196,12 @@ pub fn newfstatat(a: &mut Args) -> KResult<Ret> {
     let st = if a.a3() & AT_EMPTY_PATH != 0 && uaccess::read_user::<u8>(a.a1())? == 0 {
         file(a.a0())?.inode.metadata().to_stat()
     } else {
-        fs::stat(&path_at(a.a0() as i32, a.a1())?)?.to_stat()
+        let path = path_at(a.a0() as i32, a.a1())?;
+        if a.a3() as u32 & AT_SYMLINK_NOFOLLOW != 0 {
+            fs::lstat(&path)?.to_stat()
+        } else {
+            fs::stat(&path)?.to_stat()
+        }
     };
     uaccess::write_user(a.a2(), &st)?;
     value(0)

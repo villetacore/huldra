@@ -62,7 +62,8 @@ fn call(n: usize, a: &mut Args) -> KResult<Ret> {
         nr::WRITE => fs::write(a),
         nr::OPEN => fs::open(a),
         nr::CLOSE => fs::close(a),
-        nr::STAT | nr::LSTAT => fs::stat(a),
+        nr::STAT => fs::stat(a),
+        nr::LSTAT => fs::lstat(a),
         nr::FSTAT => fs::fstat(a),
         nr::LSEEK => fs::lseek(a),
         nr::POLL => fs::poll(a),
@@ -192,7 +193,9 @@ fn call(n: usize, a: &mut Args) -> KResult<Ret> {
         }
         // Newer interfaces whose absence callers handle (they fall back).
         nr::CLONE3 | nr::RSEQ | nr::MREMAP => Err(Errno::ENOSYS),
-        nr::LINK | nr::SYMLINK => Err(Errno::EPERM),
+        nr::LINK => Err(Errno::EPERM),
+        nr::SYMLINK => fs::symlink(a),
+        nr::SYMLINKAT => fs::symlinkat(a),
         nr::CLOCK_GETTIME => misc::clock_gettime(a),
         nr::OPENAT => fs::openat(a),
         nr::MKDIRAT => fs::mkdirat(a),

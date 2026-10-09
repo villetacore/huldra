@@ -109,6 +109,7 @@ pub const SCHED_GETAFFINITY: usize = 204;
 pub const CLOCK_GETRES: usize = 229;
 pub const CLOCK_NANOSLEEP: usize = 230;
 pub const TGKILL: usize = 234;
+pub const SYMLINKAT: usize = 266;
 pub const READLINKAT: usize = 267;
 pub const FCHMODAT: usize = 268;
 pub const FACCESSAT: usize = 269;

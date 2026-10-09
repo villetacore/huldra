@@ -1,6 +1,7 @@
 //! Raw system calls and thin typed wrappers.
 
 use crate::{Errno, Result};
+use alloc::string::String;
 use alloc::vec::Vec;
 use core::arch::asm;
 use huldra_abi::fs::Stat;
@@ -89,6 +90,27 @@ pub fn stat(path: &str) -> Result<Stat> {
     let mut st = Stat::default();
     check(unsafe { syscall3(nr::STAT, p.as_ptr(), &mut st as *mut Stat as usize, 0) })?;
     Ok(st)
+}
+
+/// `stat` that reports a symbolic link itself rather than its target.
+pub fn lstat(path: &str) -> Result<Stat> {
+    let p = CString::new(path);
+    let mut st = Stat::default();
+    check(unsafe { syscall3(nr::LSTAT, p.as_ptr(), &mut st as *mut Stat as usize, 0) })?;
+    Ok(st)
+}
+
+pub fn symlink(target: &str, path: &str) -> Result<()> {
+    let (t, p) = (CString::new(target), CString::new(path));
+    check(unsafe { syscall3(nr::SYMLINK, t.as_ptr(), p.as_ptr(), 0) }).map(drop)
+}
+
+pub fn readlink(path: &str) -> Result<String> {
+    let p = CString::new(path);
+    let mut buf = alloc::vec![0u8; 4096];
+    let n = check(unsafe { syscall3(nr::READLINK, p.as_ptr(), buf.as_mut_ptr() as usize, buf.len()) })?;
+    buf.truncate(n as usize);
+    Ok(String::from_utf8_lossy(&buf).into_owned())
 }
 
 pub fn fstat(fd: i32) -> Result<Stat> {

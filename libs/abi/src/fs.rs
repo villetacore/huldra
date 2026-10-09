@@ -15,6 +15,7 @@ pub const O_CLOEXEC: u32 = 0o2000000;
 
 pub const AT_FDCWD: i32 = -100;
 pub const AT_REMOVEDIR: u32 = 0x200;
+pub const AT_SYMLINK_NOFOLLOW: u32 = 0x100;
 
 pub const SEEK_SET: u32 = 0;
 pub const SEEK_CUR: u32 = 1;

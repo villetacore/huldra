@@ -131,6 +131,27 @@ pub fn stat(path: &str) -> KResult<Metadata> {
     Ok(vfs::lookup(path)?.metadata())
 }
 
+/// `stat` that does not follow a symbolic link at the end of `path`.
+pub fn lstat(path: &str) -> KResult<Metadata> {
+    Ok(vfs::lookup_nofollow(path)?.metadata())
+}
+
+/// Creates the symbolic link `path` pointing to `target` (stored as is).
+pub fn symlink(target: &str, path: &str) -> KResult<()> {
+    if target.is_empty() {
+        return Err(Errno::ENOENT);
+    }
+    if target.len() > vfs::PATH_MAX {
+        return Err(Errno::ENAMETOOLONG);
+    }
+    let (parent, name) = vfs::lookup_parent(path)?;
+    parent.symlink(&name, target)
+}
+
+pub fn readlink(path: &str) -> KResult<String> {
+    vfs::lookup_nofollow(path)?.readlink()
+}
+
 pub fn mkdir(path: &str, perm: u32) -> KResult<()> {
     let (parent, name) = vfs::lookup_parent(path)?;
     parent
@@ -215,6 +236,7 @@ pub const TESTS: &[crate::ktest::Test] = ktests![
     tests::devices,
     tests::procfs,
     tests::getdents,
+    tests::symlinks,
 ];
 
 mod tests {
@@ -310,6 +332,47 @@ mod tests {
         let mounts = String::from_utf8(read_file("/proc/mounts").unwrap()).unwrap();
         assert!(mounts.contains("devfs /dev devfs"));
         assert!(stat("/proc/1").unwrap().is_dir());
+    }
+
+    pub fn symlinks() {
+        mkdir_all("/tmp/sl/real/sub").unwrap();
+        write_file("/tmp/sl/real/sub/f", b"via link").unwrap();
+        symlink("/tmp/sl/real", "/tmp/sl/abs").unwrap();
+        symlink("real/sub", "/tmp/sl/rel").unwrap();
+        symlink("../real/sub/f", "/tmp/sl/real/up").unwrap();
+        symlink("/dev", "/tmp/sl/dev").unwrap();
+        symlink("loop", "/tmp/sl/loop").unwrap();
+        symlink("missing", "/tmp/sl/dangling").unwrap();
+
+        assert_eq!(read_file("/tmp/sl/abs/sub/f").unwrap(), b"via link");
+        assert_eq!(read_file("/tmp/sl/rel/f").unwrap(), b"via link");
+        // `..` inside a target is physical: real/up -> /tmp/sl/real/sub/f.
+        assert_eq!(read_file("/tmp/sl/abs/up").unwrap(), b"via link");
+        // Crossing into another mount through a link.
+        assert_eq!(stat("/tmp/sl/dev/null").unwrap().kind, FileType::CharDevice);
+        assert_eq!(vfs::canonical("/tmp/sl/abs/up").unwrap(), "/tmp/sl/real/sub/f");
+
+        assert_eq!(stat("/tmp/sl/loop").err(), Some(Errno::ELOOP));
+        assert_eq!(stat("/tmp/sl/dangling").err(), Some(Errno::ENOENT));
+        assert_eq!(lstat("/tmp/sl/dangling").unwrap().kind, FileType::Symlink);
+        assert_eq!(readlink("/tmp/sl/rel").unwrap(), "real/sub");
+        assert_eq!(readlink("/tmp/sl/real").err(), Some(Errno::EINVAL));
+        assert_eq!(symlink("x", "/tmp/sl/abs").err(), Some(Errno::EEXIST));
+
+        // Replacing a link atomically (how profiles switch generations).
+        symlink("real/sub", "/tmp/sl/new").unwrap();
+        super::rename("/tmp/sl/new", "/tmp/sl/abs").unwrap();
+        assert_eq!(read_file("/tmp/sl/abs/f").unwrap(), b"via link");
+
+        // unlink removes the link, not what it points to.
+        for l in ["abs", "rel", "dev", "loop", "dangling", "real/up"] {
+            unlink(&alloc::format!("/tmp/sl/{}", l)).unwrap();
+        }
+        assert!(stat("/tmp/sl/real/sub/f").is_ok());
+        unlink("/tmp/sl/real/sub/f").unwrap();
+        rmdir("/tmp/sl/real/sub").unwrap();
+        rmdir("/tmp/sl/real").unwrap();
+        rmdir("/tmp/sl").unwrap();
     }
 
     pub fn getdents() {

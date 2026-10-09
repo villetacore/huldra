@@ -201,6 +201,32 @@ fn rename_files_and_directories() {
 }
 
 #[test]
+fn symlinks() {
+    let mut fs = fresh(4 << 20);
+    let free = fs.statfs().free_blocks;
+    let fast = fs.symlink(ROOT_INO, "fast", "/pkg/store/abc-hello/bin/hello").unwrap();
+    assert_eq!(fs.read_link(fast).unwrap(), "/pkg/store/abc-hello/bin/hello");
+    assert_eq!(fs.read_inode(fast).unwrap().sectors, 0);
+    assert_eq!(fs.statfs().free_blocks, free);
+
+    let long = "x/".repeat(100);
+    let slow = fs.symlink(ROOT_INO, "slow", &long).unwrap();
+    assert_eq!(fs.read_link(slow).unwrap(), long);
+    assert_eq!(fs.statfs().free_blocks, free - 1);
+    assert_eq!(fs.read_dir(ROOT_INO).unwrap().iter().find(|e| e.name == "slow").unwrap().file_type, FT_SYMLINK);
+
+    assert_eq!(fs.symlink(ROOT_INO, "fast", "y"), Err(Error::Exists));
+    assert_eq!(fs.symlink(ROOT_INO, "empty", ""), Err(Error::Invalid));
+    assert_eq!(fs.read_link(ROOT_INO), Err(Error::Invalid));
+
+    // Removing a fast symlink must not free its "block pointers".
+    fs.unlink(ROOT_INO, "fast").unwrap();
+    fs.unlink(ROOT_INO, "slow").unwrap();
+    assert_eq!(fs.statfs().free_blocks, free);
+    check_consistency(&fs);
+}
+
+#[test]
 fn multiple_groups_and_persistence() {
     let size = 40 << 20;
     let disk = MemDisk(RefCell::new(std::vec![0u8; size]));

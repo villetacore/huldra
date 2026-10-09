@@ -56,6 +56,11 @@ pub const S_IFLNK: u16 = 0o120000;
 pub const FT_UNKNOWN: u8 = 0;
 pub const FT_REG: u8 = 1;
 pub const FT_DIR: u8 = 2;
+pub const FT_SYMLINK: u8 = 7;
+
+/// Symbolic link targets shorter than this live in the inode's block
+/// pointers ("fast" symlinks); longer ones get a data block.
+const FAST_SYMLINK_MAX: usize = 60;
 
 pub(crate) const INCOMPAT_FILETYPE: u32 = 0x2;
 pub(crate) const RO_COMPAT_SPARSE_SUPER: u32 = 0x1;
@@ -101,6 +106,15 @@ impl Inode {
 
     pub fn is_regular(&self) -> bool {
         self.mode & S_IFMT == S_IFREG
+    }
+
+    pub fn is_symlink(&self) -> bool {
+        self.mode & S_IFMT == S_IFLNK
+    }
+
+    /// A symlink whose target is stored in `block` instead of a data block.
+    fn is_fast_symlink(&self) -> bool {
+        self.is_symlink() && self.sectors == 0
     }
 
     fn decode(b: &[u8]) -> Inode {
@@ -882,12 +896,67 @@ impl<D: Disk> Ext2<D> {
     }
 
     fn release_inode(&mut self, ino: u32, mut inode: Inode) -> Result<()> {
+        if inode.is_fast_symlink() {
+            inode.block = [0; 15]; // the target text, not block numbers
+        }
         self.free_blocks_from(&mut inode, 0)?;
         inode.links = 0;
         inode.size = 0;
         inode.dtime = self.now();
         self.write_inode(ino, &inode)?;
         self.free_inode(ino, inode.is_dir())
+    }
+
+    /// Creates the symbolic link `parent/name` pointing to `target`.
+    pub fn symlink(&mut self, parent: u32, name: &str, target: &str) -> Result<u32> {
+        if target.is_empty() {
+            return Err(Error::Invalid);
+        }
+        if target.len() >= self.block_size as usize {
+            return Err(Error::NameTooLong);
+        }
+        let ino = self.create(parent, name, S_IFLNK | 0o777)?;
+        if target.len() < FAST_SYMLINK_MAX {
+            let mut inode = self.read_inode(ino)?;
+            let mut bytes = [0u8; FAST_SYMLINK_MAX];
+            bytes[..target.len()].copy_from_slice(target.as_bytes());
+            for (i, slot) in inode.block.iter_mut().enumerate() {
+                *slot = get32(&bytes, i * 4);
+            }
+            inode.size = target.len() as u64;
+            self.write_inode(ino, &inode)?;
+        } else if let Err(e) = self.write(ino, 0, target.as_bytes()) {
+            let _ = self.unlink(parent, name);
+            return Err(e);
+        }
+        Ok(ino)
+    }
+
+    /// The target of a symbolic link.
+    pub fn read_link(&mut self, ino: u32) -> Result<String> {
+        let inode = self.read_inode(ino)?;
+        if !inode.is_symlink() {
+            return Err(Error::Invalid);
+        }
+        let len = inode.size as usize;
+        let bytes = if inode.is_fast_symlink() {
+            if len >= FAST_SYMLINK_MAX {
+                return Err(Error::Corrupt("fast symlink too long"));
+            }
+            let mut b = [0u8; FAST_SYMLINK_MAX];
+            for (i, v) in inode.block.iter().enumerate() {
+                put32(&mut b, i * 4, *v);
+            }
+            b[..len].to_vec()
+        } else {
+            if len >= self.block_size as usize {
+                return Err(Error::Corrupt("symlink too long"));
+            }
+            let mut b = vec![0u8; len];
+            self.read(ino, 0, &mut b)?;
+            b
+        };
+        String::from_utf8(bytes).map_err(|_| Error::Corrupt("symlink target is not UTF-8"))
     }
 
     /// Removes `name` from `parent` (directories must be empty).

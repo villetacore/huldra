@@ -1,4 +1,11 @@
 
-Welcome to Huldra, a small Unix-like system written in Rust.
-Type "help" for a list of shell commands.
+ HULDRA INDUSTRIES (TM) UNIFIED OPERATING SYSTEM
+ COPYRIGHT 2026 HULDRA INDUSTRIES
+ ================================================
+ A small Unix-like system written in Rust.
+
+ > help ............ shell commands
+ > startgui ........ graphical session
+ > hack ............ terminal access minigame
+ > mines, blocks ... games (in the graphical session)
 

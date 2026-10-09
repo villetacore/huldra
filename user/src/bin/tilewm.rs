@@ -29,11 +29,11 @@ const TITLE: i32 = 18;
 const BORDER: i32 = 2;
 
 // i3's default colors.
-const FOCUSED_BORDER: u32 = 0xFF4C7899;
-const FOCUSED_BG: u32 = 0xFF285577;
-const UNFOCUSED_BORDER: u32 = 0xFF333333;
-const UNFOCUSED_BG: u32 = 0xFF222222;
-const UNFOCUSED_TEXT: u32 = 0xFF888888;
+const FOCUSED_BORDER: u32 = theme::ACCENT;
+const FOCUSED_BG: u32 = theme::HOVER;
+const UNFOCUSED_BORDER: u32 = theme::LINE_DIM;
+const UNFOCUSED_BG: u32 = theme::SURFACE;
+const UNFOCUSED_TEXT: u32 = theme::TEXT_DIM;
 
 struct Client {
     win: u32,
@@ -71,7 +71,7 @@ impl Wm {
     fn draw_frame(&mut self, i: usize) {
         let c = &self.clients[i];
         let focused = self.ws[c.ws].focus == Some(c.win);
-        let (border, bg, fg) = if focused { (FOCUSED_BORDER, FOCUSED_BG, 0xFFFFFFFF) } else { (UNFOCUSED_BORDER, UNFOCUSED_BG, UNFOCUSED_TEXT) };
+        let (border, bg, fg) = if focused { (FOCUSED_BORDER, FOCUSED_BG, theme::BRIGHT) } else { (UNFOCUSED_BORDER, UNFOCUSED_BG, UNFOCUSED_TEXT) };
         let r = c.rect;
         let mut cv = Canvas::new(r.w, TITLE + BORDER);
         cv.fill_rect(cv.bounds(), border);
@@ -337,8 +337,8 @@ fn main() -> i32 {
         d.send(Request::GrabKey { code: k, mods: MOD | MOD_SHIFT });
     }
     // i3's background is plain.
-    d.fill(ROOT, Rect::new(0, 0, d.width, d.height), 0xFF101418);
-    d.text(ROOT, 20, d.height - PANEL - 40, 0xFF4A5560, 0, "tilewm: Alt+Enter terminal, Alt+d run, Alt+1..9 workspaces, Alt+Shift+b floating mode");
+    d.fill(ROOT, Rect::new(0, 0, d.width, d.height), theme::BG);
+    d.text(ROOT, 20, d.height - PANEL - 40, theme::TEXT_DIM, 0, "tilewm: Alt+Enter terminal, Alt+d run, Alt+1..9 workspaces, Alt+Shift+b floating mode");
     d.flush();
     let mut wm = Wm { d, font: load_font(), ws: Default::default(), cur: 0, clients: Vec::new() };
     wm.status();

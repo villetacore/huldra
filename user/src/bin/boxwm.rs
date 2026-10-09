@@ -23,12 +23,10 @@ const BUTTON: i32 = 16;
 const PANEL: i32 = 26;
 const CORNER: i32 = 14;
 
-const ACTIVE_TOP: u32 = 0xFF5A82B4;
-const ACTIVE_BOTTOM: u32 = 0xFF2E5486;
-const INACTIVE_TOP: u32 = 0xFF9A9A9A;
-const INACTIVE_BOTTOM: u32 = 0xFF6E6E6E;
-const BORDER_ACTIVE: u32 = 0xFF22406A;
-const BORDER_INACTIVE: u32 = 0xFF505050;
+// Frames in the terminal style: a phosphor outline, a dark title bar and
+// square outlined buttons.
+const BORDER_ACTIVE: u32 = theme::ACCENT;
+const BORDER_INACTIVE: u32 = theme::LINE_DIM;
 
 const MENU_ITEMS: &[(&str, &str)] = &[
     ("Terminal", "term"),
@@ -37,6 +35,11 @@ const MENU_ITEMS: &[(&str, &str)] = &[
     ("Paint", "paint"),
     ("Files", "files"),
     ("System info", "sysinfo"),
+    ("", ""),
+    ("Mines", "mines"),
+    ("Blocks", "blocks"),
+    ("Terminal hack", "term -e hack"),
+    ("", ""),
     ("Run...", "menu"),
     ("", ""),
     ("Switch to tiling (tilewm)", "@tilewm"),
@@ -114,34 +117,37 @@ impl Wm {
         let fr = c.frame_rect();
         let (w, h) = (fr.w, fr.h);
         let mut canvas = Canvas::new(w, TITLE + BORDER);
-        let (top, bottom, border) = if active { (ACTIVE_TOP, ACTIVE_BOTTOM, BORDER_ACTIVE) } else { (INACTIVE_TOP, INACTIVE_BOTTOM, BORDER_INACTIVE) };
+        let (border, bar, fg) = if active { (BORDER_ACTIVE, theme::RAISED, theme::BRIGHT) } else { (BORDER_INACTIVE, theme::SURFACE, theme::TEXT_DIM) };
         canvas.fill_rect(canvas.bounds(), border);
-        canvas.gradient(Rect::new(BORDER, BORDER, w - 2 * BORDER, TITLE), top, bottom);
-        canvas.fill_rect(Rect::new(BORDER, BORDER, w - 2 * BORDER, 1), huldra_gfx::canvas::mix(top, 0xFFFFFFFF, 90));
+        canvas.fill_rect(Rect::new(BORDER, BORDER, w - 2 * BORDER, TITLE), bar);
+        canvas.fill_rect(Rect::new(BORDER, BORDER + TITLE - 1, w - 2 * BORDER, 1), if active { theme::LINE } else { theme::LINE_DIM });
         // Buttons: minimize, maximize, close (right to left: close last).
-        let fg = if active { 0xFFFFFFFF } else { 0xFFE0E0E0 };
         for (k, kind) in ["min", "max", "close"].iter().enumerate() {
             let bx = w - BORDER - 4 - (3 - k as i32) * (BUTTON + 3);
             let by = BORDER + (TITLE - BUTTON) / 2;
             let r = Rect::new(bx, by, BUTTON, BUTTON);
-            let bg = if *kind == "close" { if active { 0xFFC8504A } else { 0xFF8A6A6A } } else { huldra_gfx::canvas::mix(bottom, 0xFFFFFFFF, 40) };
-            canvas.fill_round_rect(r, 3, bg);
+            let glyph = if *kind == "close" && active { theme::RUST } else { fg };
+            canvas.fill_rect(r, theme::BG);
+            canvas.rect_outline(r, if active { theme::LINE } else { theme::LINE_DIM });
             match *kind {
-                "min" => canvas.fill_rect(Rect::new(bx + 4, by + 11, 8, 2), fg),
+                "min" => canvas.fill_rect(Rect::new(bx + 4, by + 11, 8, 2), glyph),
                 "max" => {
-                    canvas.rect_outline(Rect::new(bx + 4, by + 4, 8, 8), fg);
-                    canvas.fill_rect(Rect::new(bx + 4, by + 4, 8, 2), fg);
+                    canvas.rect_outline(Rect::new(bx + 4, by + 4, 8, 8), glyph);
+                    canvas.fill_rect(Rect::new(bx + 4, by + 4, 8, 2), glyph);
                 }
                 _ => {
-                    canvas.thick_line(bx + 4, by + 4, bx + 11, by + 11, 2, fg);
-                    canvas.thick_line(bx + 11, by + 4, bx + 4, by + 11, 2, fg);
+                    canvas.thick_line(bx + 4, by + 4, bx + 11, by + 11, 2, glyph);
+                    canvas.thick_line(bx + 11, by + 4, bx + 4, by + 11, 2, glyph);
                 }
             }
         }
-        let max_chars = ((w - 2 * BORDER - 3 * (BUTTON + 3) - 16) / FONT_W).max(0) as usize;
-        let title: String = c.title.chars().take(max_chars).collect();
+        // A status lamp, then the title in capitals like a terminal header.
+        let lamp = Rect::new(BORDER + 7, BORDER + (TITLE - 10) / 2, 6, 10);
+        canvas.fill_rect(lamp, if active { theme::ACCENT } else { theme::LINE_DIM });
+        let max_chars = ((w - 2 * BORDER - 3 * (BUTTON + 3) - 30) / FONT_W).max(0) as usize;
+        let title: String = c.title.chars().take(max_chars).map(|ch| ch.to_ascii_uppercase()).collect();
         canvas.set_clip(Rect::new(0, 0, w - 3 * (BUTTON + 3) - 8, TITLE + BORDER));
-        canvas.draw_text_bold(&self.font, BORDER + 8, BORDER + (TITLE - 16) / 2, &title, fg);
+        canvas.draw_text(&self.font, BORDER + 20, BORDER + (TITLE - 16) / 2, &title, fg, None);
         canvas.reset_clip();
         let frame = c.frame;
         self.d.put_canvas(frame, &canvas, canvas.bounds(), 0, 0);
@@ -150,7 +156,7 @@ impl Wm {
         self.d.fill(frame, Rect::new(w - BORDER, TITLE + BORDER, BORDER, h), border);
         self.d.fill(frame, Rect::new(0, h - BORDER, w, BORDER), border);
         // Resize grip.
-        self.d.fill(frame, Rect::new(w - CORNER, h - BORDER, CORNER, BORDER), if active { 0xFF7FA6D6 } else { 0xFF808080 });
+        self.d.fill(frame, Rect::new(w - CORNER, h - BORDER, CORNER, BORDER), if active { theme::BRIGHT } else { theme::LINE });
     }
 
     /// Which title bar button is at frame-relative (x, y).
@@ -294,20 +300,26 @@ impl Wm {
     fn draw_menu(&mut self) {
         let Some(m) = &self.menu else { return };
         let mut c = Canvas::new(m.rect.w, m.rect.h);
-        c.fill_rect(c.bounds(), 0xFFF2F2F2);
-        c.rect_outline(c.bounds(), 0xFF5A5A5A);
+        c.fill_rect(c.bounds(), theme::SURFACE);
+        c.rect_outline(c.bounds(), theme::ACCENT);
+        c.rect_outline(c.bounds().inset(2), theme::LINE_DIM);
         let mut top = 4;
         for (i, (label, _)) in MENU_ITEMS.iter().enumerate() {
             if label.is_empty() {
-                c.fill_rect(Rect::new(8, top + 3, m.rect.w - 16, 1), 0xFFB0B0B0);
+                let mut x = 8;
+                while x < m.rect.w - 8 {
+                    c.fill_rect(Rect::new(x, top + 3, 4, 1), theme::LINE);
+                    x += 7;
+                }
                 top += 7;
                 continue;
             }
             let hover = m.hover == Some(i);
             if hover {
-                c.gradient(Rect::new(3, top, m.rect.w - 6, 22), ACTIVE_TOP, ACTIVE_BOTTOM);
+                c.fill_rect(Rect::new(4, top, m.rect.w - 8, 22), theme::ACCENT);
+                c.draw_text_bold(&self.font, 8, top + 3, ">", theme::BG);
             }
-            c.draw_text(&self.font, 16, top + 3, label, if hover { 0xFFFFFFFF } else { 0xFF202020 }, None);
+            c.draw_text(&self.font, 20, top + 3, label, if hover { theme::BG } else { theme::TEXT }, None);
             top += 22;
         }
         let win = m.win;

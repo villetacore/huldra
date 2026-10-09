@@ -8,7 +8,9 @@
 //! protocol in huldra-gfx); without one, windows simply appear where
 //! their owners put them.
 //!
-//! Usage: display [WIDTHxHEIGHT]. Ctrl+Alt+Backspace kills it.
+//! Usage: display [--no-crt] [WIDTHxHEIGHT]. Ctrl+Alt+Backspace kills it.
+//! The screen imitates a CRT (faint scanlines) unless `--no-crt` is given;
+//! screenshots are taken before that, so they stay clean.
 
 #![no_std]
 #![no_main]
@@ -19,6 +21,7 @@ use huldra_gfx::canvas::{Canvas, Rect};
 use huldra_gfx::font::Font;
 use huldra_gfx::keymap::{self, Modifiers};
 use huldra_gfx::proto::*;
+use huldra_gfx::theme;
 use huldra_user::abi::fs::{PollFd, O_RDWR, POLLIN};
 use huldra_user::abi::mm::{MAP_SHARED, PROT_READ, PROT_WRITE};
 use huldra_user::abi::net::MSG_DONTWAIT;
@@ -79,6 +82,8 @@ struct Server {
     damage: Vec<Rect>,
     status: String,
     quit: bool,
+    /// Darken every other row on the way to the frame buffer.
+    crt: bool,
 }
 
 fn send_to(c: &mut Client, e: &Event) {
@@ -174,6 +179,12 @@ impl Server {
             // Copy to the frame buffer.
             for y in r.y..r.bottom() {
                 let start = (y * self.width + r.x) as usize;
+                if self.crt && y & 1 == 1 {
+                    for (i, &p) in self.screen.pixels[start..start + r.w as usize].iter().enumerate() {
+                        unsafe { self.fb.add(start + i).write(theme::darken(p)) };
+                    }
+                    continue;
+                }
                 unsafe {
                     core::ptr::copy_nonoverlapping(self.screen.pixels.as_ptr().add(start), self.fb.add(start), r.w as usize);
                 }
@@ -269,7 +280,7 @@ impl Server {
         }
         let resized = old.w != r.w || old.h != r.h;
         if resized {
-            w.canvas.resize(r.w, r.h, 0xFF202020);
+            w.canvas.resize(r.w, r.h, theme::SURFACE);
         }
         w.rect = r;
         let (owner, mapped) = (w.owner, w.mapped);
@@ -344,7 +355,7 @@ impl Server {
                 }
                 let (w, h) = (w.clamp(1, 4096), h.clamp(1, 4096));
                 let mut canvas = Canvas::new(w, h);
-                canvas.fill_rect(canvas.bounds(), 0xFF202020);
+                canvas.fill_rect(canvas.bounds(), theme::SURFACE);
                 self.wins.insert(id, Win { owner: cid, rect: Rect::new(x, y, w, h), mapped: false, kind, title: String::new(), canvas, managed: false });
                 self.stack.push(id);
             }
@@ -714,12 +725,47 @@ impl Server {
     }
 }
 
+/// The desktop: the glass of an old green monitor, a little brighter in
+/// the middle and darker toward the corners, with a boot header.
 fn paint_background(root: &mut Canvas, font: &Font) {
     let b = root.bounds();
-    root.gradient(b, 0xFF1F3A5F, 0xFF0B1320);
-    let text = "Huldra";
-    let x = b.w - font.text_width(text) * 1 - 24;
-    root.draw_text_bold(font, x, b.h - 40, text, 0xFF5F7FA6);
+    let (cx, cy) = (b.w / 2, b.h / 2);
+    let max = (cx * cx + cy * cy) as i64;
+    let center = huldra_gfx::canvas::mix(theme::BG, theme::LINE_DIM, 70);
+    let edge = 0xFF050B08;
+    for y in 0..b.h {
+        for x in 0..b.w {
+            let (dx, dy) = ((x - cx) as i64, (y - cy) as i64);
+            // Squared distance, squared again: the edges darken late.
+            let d = (dx * dx + dy * dy) * 255 / max;
+            root.pixels[(y * b.w + x) as usize] = huldra_gfx::canvas::mix(center, edge, (d * d / 255) as u32);
+        }
+    }
+    let header = [
+        "HULDRA INDUSTRIES (TM) UNIFIED OPERATING SYSTEM",
+        "COPYRIGHT 2026 HULDRA INDUSTRIES",
+        "",
+        "> SYSTEM READY_",
+    ];
+    for (i, line) in header.iter().enumerate() {
+        root.draw_text(font, 32, 28 + i as i32 * 18, line, if i == 3 { theme::TEXT } else { theme::TEXT_DIM }, None);
+    }
+    // A big logo in the corner, drawn 4x from the bitmap font.
+    let text = "HULDRA";
+    let scale = 4;
+    let (w, h) = (font.text_width(text), font.height);
+    let mut small = Canvas::new(w, h);
+    small.fill_rect(small.bounds(), 0);
+    small.draw_text(font, 0, 0, text, theme::LINE_DIM, None);
+    let (x0, y0) = (b.w - w * scale - 40, b.h - h * scale - 60);
+    for y in 0..h * scale {
+        for x in 0..w * scale {
+            let p = small.get(x / scale, y / scale);
+            if p != 0 {
+                root.put(x0 + x, y0 + y, p);
+            }
+        }
+    }
 }
 
 fn main() -> i32 {
@@ -733,7 +779,8 @@ fn main() -> i32 {
     };
     let mut info = [0u32; 40];
     let _ = sys::ioctl(fd, FBIOGET_VSCREENINFO, info.as_mut_ptr() as usize);
-    if let Some((w, h)) = args.get(1).and_then(|m| m.split_once('x')) {
+    let crt = !args.iter().any(|a| a == "--no-crt");
+    if let Some((w, h)) = args.iter().skip(1).find(|a| !a.starts_with('-')).and_then(|m| m.split_once('x')) {
         if let (Ok(w), Ok(h)) = (w.parse::<u32>(), h.parse::<u32>()) {
             info[0] = w;
             info[1] = h;
@@ -787,6 +834,7 @@ fn main() -> i32 {
         damage: Vec::new(),
         status: String::new(),
         quit: false,
+        crt,
     };
     s.damage(Rect::new(0, 0, width, height));
     s.compose();

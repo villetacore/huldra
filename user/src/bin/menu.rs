@@ -47,11 +47,12 @@ fn main() -> i32 {
         sel = sel.min(matches.len().saturating_sub(1));
         // Draw: prompt, input, then the matches like dmenu.
         let mut c = Canvas::new(w, HEIGHT);
-        c.fill_rect(c.bounds(), 0xFF222222);
-        c.fill_rect(Rect::new(0, 0, 60, HEIGHT), 0xFF285577);
-        c.draw_text_bold(&font, 10, 3, "run:", 0xFFFFFFFF);
-        let x = c.draw_text(&font, 70, 3, &input, 0xFFFFFFFF, None);
-        c.fill_rect(Rect::new(x + 1, 4, 2, 14), 0xFFFFFFFF);
+        c.fill_rect(c.bounds(), theme::SURFACE);
+        c.fill_rect(Rect::new(0, HEIGHT - 1, w, 1), theme::LINE);
+        c.fill_rect(Rect::new(0, 0, 60, HEIGHT - 1), theme::ACCENT);
+        c.draw_text_bold(&font, 10, 3, "RUN>", theme::BG);
+        let x = c.draw_text(&font, 70, 3, &input, theme::BRIGHT, None);
+        c.fill_rect(Rect::new(x + 1, 3, FONT_W, 16), theme::ACCENT);
         let mut mx = 260.max(x + 20);
         for (i, m) in matches.iter().enumerate().take(40) {
             let tw = font.text_width(m) + 16;
@@ -59,9 +60,9 @@ fn main() -> i32 {
                 break;
             }
             if i == sel {
-                c.fill_rect(Rect::new(mx, 0, tw, HEIGHT), 0xFF285577);
+                c.fill_rect(Rect::new(mx, 0, tw, HEIGHT - 1), theme::ACCENT);
             }
-            c.draw_text(&font, mx + 8, 3, m, if i == sel { 0xFFFFFFFF } else { 0xFFBBBBBB }, None);
+            c.draw_text(&font, mx + 8, 3, m, if i == sel { theme::BG } else { theme::TEXT_DIM }, None);
             mx += tw;
         }
         d.put_canvas(win, &c, c.bounds(), 0, 0);

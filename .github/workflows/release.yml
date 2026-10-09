@@ -1,0 +1,106 @@
+# Release: push a tag vX.Y.Z (matching `version` in Cargo.toml). Runs the
+# tests, builds an optimized system and publishes a GitHub release with
+# the bootable ISO, the kernel and initrd for `qemu -kernel`, the system
+# disk image, the package repository and checksums. Release notes come
+# from the matching section of CHANGELOG.md.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)publish, e.g. v0.3.0"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    name: Build and publish
+    needs: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Install GRUB tools and e2fsprogs
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends grub-pc-bin grub-common xorriso mtools e2fsprogs
+
+      - name: Rust toolchain (from rust-toolchain.toml)
+        run: rustup show
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check that the tag matches the version
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)
+          if [ "v$version" != "$TAG" ]; then
+            echo "tag $TAG does not match Cargo.toml version $version" >&2
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Build the system, ISO and package repository
+        run: |
+          cargo xtask build --release
+          cargo xtask iso --release
+          cargo xtask repo
+          cargo xtask fsck
+
+      - name: Package
+        run: |
+          name="huldra-$VERSION-x86_64"
+          mkdir -p dist
+          cp target/huldra.iso "dist/$name.iso"
+          cp target/x86_64-unknown-none/release/huldra "dist/$name-kernel"
+          cp target/initrd.cpio "dist/$name-initrd.cpio"
+          gzip -9 -c target/disk.img > "dist/$name-disk.img.gz"
+          tar -C target -czf "dist/huldra-$VERSION-repo.tar.gz" repo
+          (cd dist && sha256sum * > SHA256SUMS)
+          ls -l dist
+
+      - name: Release notes from CHANGELOG.md
+        run: |
+          awk -v v="$VERSION" '
+            /^## \[/ { if (found) exit; if (index($0, "[" v "]")) { found = 1; next } }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "CHANGELOG.md has no section for $VERSION" >&2
+            exit 1
+          fi
+          cat >> notes.md <<'NOTES'
+
+          ### Running
+
+          ```sh
+          gunzip huldra-*-disk.img.gz
+          qemu-system-x86_64 -m 256M -nic user,model=e1000 \
+            -kernel huldra-*-kernel -initrd huldra-*-initrd.cpio \
+            -drive file=huldra-*-disk.img,format=raw,if=ide -append "root=/dev/hda gui"
+          ```
+
+          Or boot `huldra-*.iso` in any PC emulator (Multiboot2 via GRUB, runs from the initrd).
+          NOTES
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: Huldra ${{ env.VERSION }}
+          body_path: notes.md
+          files: dist/*

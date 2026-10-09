@@ -51,7 +51,7 @@ fn prompt() -> String {
     } else {
         cwd
     };
-    alloc::format!("\x1b[1;32mroot@{}\x1b[0m:\x1b[1;34m{}\x1b[0m# ", host.trim(), shown)
+    alloc::format!("\x1b[1;32mroot@{}\x1b[0m:\x1b[33m{}\x1b[0m# ", host.trim(), shown)
 }
 
 /// Tab completion: commands for the first word, file names otherwise.

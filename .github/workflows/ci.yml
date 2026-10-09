@@ -1,0 +1,57 @@
+# Tests: host unit tests, the C compiler against gcc, and the whole system
+# booted in QEMU (kernel tests, shell, reboot, graphics, packages, Linux
+# binaries, e2fsck of the disk the guest wrote). See `cargo xtask test`.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Build and test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install QEMU, e2fsprogs and gcc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qemu-system-x86 e2fsprogs gcc libc6-dev
+
+      - name: Rust toolchain (from rust-toolchain.toml)
+        run: rustup show
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build (debug)
+        run: cargo xtask build
+
+      - name: Build (release)
+        run: cargo xtask build --release
+
+      - name: Test
+        run: cargo xtask test
+
+      - name: Keep the build on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failed-build
+          path: |
+            target/initrd.cpio
+            target/test-disk.img
+            target/cc-test
+          if-no-files-found: ignore
+          retention-days: 7

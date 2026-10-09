@@ -14,6 +14,7 @@ pub mod gui;
 pub mod io;
 pub mod net;
 pub mod process;
+pub mod rand;
 pub mod signal;
 pub mod sys;
 pub mod term;

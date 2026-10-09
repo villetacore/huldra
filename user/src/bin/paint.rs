@@ -11,7 +11,9 @@ use huldra_user::{env, eprintln, format, fs, Vec};
 huldra_user::main!(main);
 
 const BAR: i32 = 34;
-const COLORS: [u32; 12] = [0xFF000000, 0xFFFFFFFF, 0xFF808080, 0xFFE53935, 0xFFFB8C00, 0xFFFDD835, 0xFF43A047, 0xFF00ACC1, 0xFF1E88E5, 0xFF8E24AA, 0xFF6D4C41, 0xFFF48FB1];
+/// The paper: the screen's own glass color, so pictures match the desktop.
+const PAPER: u32 = theme::BG;
+const COLORS: [u32; 12] = [theme::BG, theme::BRIGHT, theme::ACCENT, theme::AMBER, theme::RUST, theme::TEAL, 0xFF2E7D4F, 0xFF8A6A3A, 0xFFE0E0D0, 0xFF808880, 0xFF4F7FC0, 0xFFC05A8A];
 const SIZES: [i32; 4] = [1, 3, 7, 13];
 
 struct Paint {
@@ -41,27 +43,26 @@ impl Paint {
 
     fn draw_bar(&mut self) {
         let mut c = Canvas::new(self.w, BAR);
-        c.gradient(c.bounds(), 0xFFE8E8E8, 0xFFCCCCCC);
-        c.fill_rect(Rect::new(0, BAR - 1, self.w, 1), 0xFF909090);
+        c.fill_rect(c.bounds(), theme::SURFACE);
+        c.fill_rect(Rect::new(0, BAR - 1, self.w, 1), theme::LINE);
         for (i, &col) in COLORS.iter().enumerate() {
             let r = Paint::swatch(i);
             c.fill_rect(r, col);
-            c.rect_outline(r.inset(-1), if col == self.color { 0xFF000000 } else { 0xFF9A9A9A });
+            c.rect_outline(r.inset(-1), if col == self.color { theme::BRIGHT } else { theme::LINE_DIM });
             if col == self.color {
-                c.rect_outline(r.inset(-2), 0xFF1E88E5);
+                c.rect_outline(r.inset(-2), theme::ACCENT);
             }
         }
         for (i, &s) in SIZES.iter().enumerate() {
             let r = Paint::size_box(i);
-            c.fill_rect(r, if s == self.size { 0xFFB0C8E8 } else { 0xFFF6F6F6 });
-            c.rect_outline(r, 0xFF9A9A9A);
-            c.fill_circle(r.x + 10, r.y + 10, (s / 2).max(1), 0xFF202020);
+            let hot = s == self.size;
+            c.fill_rect(r, if hot { theme::ACCENT } else { theme::RAISED });
+            c.rect_outline(r, theme::LINE);
+            c.fill_circle(r.x + 10, r.y + 10, (s / 2).max(1), if hot { theme::BG } else { theme::TEXT });
         }
         for (i, label) in ["Clear", "Save"].iter().enumerate() {
             let r = self.button(i as i32);
-            c.fill_round_rect(r, 4, 0xFFF6F6F6);
-            c.rect_outline(r, 0xFF9A9A9A);
-            c.draw_text(&self.font, r.x + (r.w - self.font.text_width(label)) / 2, r.y + 2, label, 0xFF202020, None);
+            theme::button(&mut c, &self.font, r, label, false);
         }
         let win = self.win;
         self.d.put_canvas(win, &c, c.bounds(), 0, 0);
@@ -76,7 +77,7 @@ impl Paint {
     }
 
     fn stroke(&mut self, x: i32, y: i32, erase: bool) {
-        let color = if erase { 0xFFFFFFFF } else { self.color };
+        let color = if erase { PAPER } else { self.color };
         let size = if erase { self.size.max(9) } else { self.size };
         let (x0, y0) = self.last.unwrap_or((x, y));
         self.image.thick_line(x0, y0, x, y, size, color);
@@ -114,14 +115,14 @@ fn main() -> i32 {
     d.set_title(win, "Paint");
     d.map(win);
     let mut image = Canvas::new(w, h - BAR);
-    image.fill_rect(image.bounds(), 0xFFFFFFFF);
-    let mut p = Paint { d, win, font: load_font(), w, h, image, color: 0xFF000000, size: 3, last: None };
+    image.fill_rect(image.bounds(), PAPER);
+    let mut p = Paint { d, win, font: load_font(), w, h, image, color: theme::ACCENT, size: 3, last: None };
     while let Some(ev) = p.d.wait_event(-1) {
         match ev {
             Event::Expose { w, h, .. } => {
                 p.w = w;
                 p.h = h;
-                p.image.resize(w, (h - BAR).max(1), 0xFFFFFFFF);
+                p.image.resize(w, (h - BAR).max(1), PAPER);
                 p.draw_bar();
                 let b = p.image.bounds();
                 p.show_image(b);
@@ -134,7 +135,7 @@ fn main() -> i32 {
                     } else if let Some(i) = (0..SIZES.len()).find(|&i| Paint::size_box(i).contains(x, y)) {
                         p.size = SIZES[i];
                     } else if p.button(0).contains(x, y) {
-                        p.image.fill_rect(p.image.bounds(), 0xFFFFFFFF);
+                        p.image.fill_rect(p.image.bounds(), PAPER);
                         let b = p.image.bounds();
                         p.show_image(b);
                     } else if p.button(1).contains(x, y) {

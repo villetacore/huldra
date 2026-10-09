@@ -67,31 +67,35 @@ impl Files {
 
     fn draw(&mut self) {
         let mut c = Canvas::new(self.w, self.h);
-        c.fill_rect(c.bounds(), 0xFFFFFFFF);
-        c.gradient(Rect::new(0, 0, self.w, HEAD), 0xFFEDEFF2, 0xFFD5D9DF);
-        c.fill_rect(Rect::new(0, HEAD - 1, self.w, 1), 0xFFA0A4AA);
-        c.draw_text_bold(&self.font, 10, 7, &self.cwd, 0xFF202830);
+        c.fill_rect(c.bounds(), theme::BG);
+        c.fill_rect(Rect::new(0, 0, self.w, HEAD), theme::RAISED);
+        c.fill_rect(Rect::new(0, HEAD - 1, self.w, 1), theme::LINE);
+        let x = c.draw_text_bold(&self.font, 10, 7, "> ", theme::ACCENT);
+        c.draw_text_bold(&self.font, x, 7, &self.cwd, theme::BRIGHT);
         let rows = self.visible_rows();
         for (i, (name, dir, size, exec)) in self.entries.iter().enumerate().skip(self.top).take(rows) {
             let y = HEAD + (i - self.top) as i32 * ROW;
-            if i == self.sel {
-                c.fill_rect(Rect::new(0, y, self.w, ROW), 0xFF3D6FB4);
+            let sel = i == self.sel;
+            if sel {
+                c.fill_rect(Rect::new(0, y, self.w, ROW), theme::ACCENT);
             } else if i % 2 == 1 {
-                c.fill_rect(Rect::new(0, y, self.w, ROW), 0xFFF4F6F9);
+                c.fill_rect(Rect::new(0, y, self.w, ROW), theme::SURFACE);
             }
-            let fg = if i == self.sel { 0xFFFFFFFF } else { 0xFF202020 };
-            // Icon: a folder or a page.
+            let fg = if sel { theme::BG } else if *dir { theme::TEAL } else if *exec { theme::BRIGHT } else { theme::TEXT };
+            // Icon: a folder or a page, drawn in outline like a terminal glyph.
             if *dir {
-                c.fill_rect(Rect::new(10, y + 6, 16, 10), 0xFFE8B84A);
-                c.fill_rect(Rect::new(10, y + 4, 7, 3), 0xFFE8B84A);
+                c.rect_outline(Rect::new(10, y + 6, 16, 10), fg);
+                c.fill_rect(Rect::new(10, y + 4, 7, 3), fg);
             } else {
-                c.fill_rect(Rect::new(12, y + 3, 12, 15), if *exec { 0xFF7CB342 } else { 0xFFDADDE2 });
-                c.rect_outline(Rect::new(12, y + 3, 12, 15), 0xFF8A8E94);
+                c.rect_outline(Rect::new(12, y + 3, 12, 15), fg);
+                for k in 0..3 {
+                    c.fill_rect(Rect::new(15, y + 7 + k * 3, 6, 1), if sel { fg } else if *exec { theme::AMBER } else { theme::TEXT_DIM });
+                }
             }
             c.draw_text(&self.font, 34, y + 2, name, fg, None);
             if !dir {
                 let s = human(*size);
-                c.draw_text(&self.font, self.w - 12 - self.font.text_width(&s), y + 2, &s, if i == self.sel { fg } else { 0xFF707070 }, None);
+                c.draw_text(&self.font, self.w - 12 - self.font.text_width(&s), y + 2, &s, if sel { fg } else { theme::TEXT_DIM }, None);
             }
         }
         let win = self.win;

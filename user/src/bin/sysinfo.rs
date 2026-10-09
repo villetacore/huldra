@@ -46,24 +46,32 @@ fn lines() -> Vec<(String, String)> {
 
 fn draw(d: &mut Display, win: u32, font: &Font, w: i32, h: i32) {
     let mut c = Canvas::new(w, h);
-    c.gradient(c.bounds(), 0xFFF7F8FA, 0xFFE3E6EB);
+    c.fill_rect(c.bounds(), theme::SURFACE);
     // Logo.
-    c.fill_round_rect(Rect::new(14, 14, 56, 56), 10, 0xFF2C6E49);
-    c.draw_text_bold(font, 26, 34, "Hu", 0xFFFFFFFF);
-    c.draw_text_bold(font, 84, 18, "Huldra", 0xFF1E2A36);
-    c.draw_text(font, 84, 40, "a small Unix-like system in Rust", 0xFF5A6470, None);
+    c.fill_rect(Rect::new(14, 14, 56, 56), theme::BG);
+    c.rect_outline(Rect::new(14, 14, 56, 56), theme::ACCENT);
+    c.rect_outline(Rect::new(17, 17, 50, 50), theme::LINE_DIM);
+    c.draw_text_bold(font, 34, 34, "H", theme::ACCENT);
+    c.draw_text_bold(font, 84, 18, "HULDRA INDUSTRIES", theme::BRIGHT);
+    c.draw_text(font, 84, 40, "Unified Operating System, written in Rust", theme::TEXT_DIM, None);
     let mut y = 86;
     for (k, v) in lines() {
-        c.draw_text_bold(font, 16, y, &k, 0xFF2E3A46);
-        c.draw_text(font, 120, y, &v, 0xFF2E3A46, None);
+        c.draw_text_bold(font, 16, y, &k, theme::TEXT);
+        c.draw_text(font, 120, y, &v, theme::BRIGHT, None);
         y += 22;
     }
     let (total, free) = meminfo();
     if total > 0 {
         let bar = Rect::new(120, y + 4, w - 140, 12);
-        c.fill_round_rect(bar, 4, 0xFFC8CDD4);
+        c.fill_rect(bar, theme::BG);
+        c.rect_outline(bar, theme::LINE);
         let used = ((total - free) * bar.w as u64 / total) as i32;
-        c.fill_round_rect(Rect::new(bar.x, bar.y, used.max(8), bar.h), 4, 0xFF3D6FB4);
+        // A segmented bar, like an old VU meter.
+        let mut x = bar.x + 2;
+        while x + 4 <= bar.x + 2 + used.max(4).min(bar.w - 4) {
+            c.fill_rect(Rect::new(x, bar.y + 2, 4, bar.h - 4), theme::ACCENT);
+            x += 6;
+        }
     }
     d.put_canvas(win, &c, c.bounds(), 0, 0);
     d.flush();

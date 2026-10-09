@@ -8,12 +8,14 @@ use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 
-/// The 16 standard colors (xterm-like, slightly softened).
+/// The 16 standard colors, tinted toward the phosphor green of the
+/// system theme but still telling red, yellow, blue... apart.
 pub const PALETTE: [u32; 16] = [
-    0xFF1D1F21, 0xFFCC6666, 0xFFB5BD68, 0xFFF0C674, 0xFF81A2BE, 0xFFB294BB, 0xFF8ABEB7, 0xFFC5C8C6, 0xFF666666, 0xFFFF7B7B, 0xFFD5E26B, 0xFFFFE08A, 0xFF9CC4F0, 0xFFD4A8E0, 0xFF9EE6DD, 0xFFFFFFFF,
+    0xFF0F1D16, 0xFFD9694C, 0xFF5FD27E, 0xFFE0B04E, 0xFF4F9C94, 0xFFB08AA6, 0xFF62C8AE, 0xFF96E6A8, // normal
+    0xFF3E6250, 0xFFF28C6C, 0xFF9AF7AE, 0xFFFFD27E, 0xFF7FCFC6, 0xFFD4AECB, 0xFF9EF2D6, 0xFFDCFFE2, // bright
 ];
-pub const DEFAULT_FG: u32 = 0xFFC5C8C6;
-pub const DEFAULT_BG: u32 = 0xFF1D1F21;
+pub const DEFAULT_FG: u32 = crate::theme::TEXT;
+pub const DEFAULT_BG: u32 = crate::theme::BG;
 
 const SCROLLBACK: usize = 1000;
 
@@ -613,7 +615,7 @@ impl Term {
     }
 }
 
-/// xterm's 256-color palette.
+/// xterm's 256-color palette (the grey ramp is tinted like the screen).
 pub fn color256(n: u8) -> u32 {
     match n {
         0..=15 => PALETTE[n as usize],
@@ -622,10 +624,7 @@ pub fn color256(n: u8) -> u32 {
             let level = |v: u8| if v == 0 { 0 } else { 55 + v as u32 * 40 };
             0xFF00_0000 | level(n / 36) << 16 | level(n / 6 % 6) << 8 | level(n % 6)
         }
-        _ => {
-            let v = 8 + (n - 232) as u32 * 10;
-            0xFF00_0000 | v << 16 | v << 8 | v
-        }
+        _ => crate::canvas::mix(PALETTE[0], PALETTE[15], 8 + (n - 232) as u32 * 10),
     }
 }
 

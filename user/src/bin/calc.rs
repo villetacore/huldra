@@ -116,40 +116,43 @@ fn button_rect(row: usize, col: usize) -> Rect {
 
 fn draw(d: &mut Display, win: u32, font: &Font, calc: &Calc, w: i32, h: i32) {
     let mut c = Canvas::new(w, h);
-    c.gradient(c.bounds(), 0xFF2B2F36, 0xFF1C1F24);
+    c.fill_rect(c.bounds(), theme::SURFACE);
     let disp = Rect::new(GAP, GAP, w - 2 * GAP, TOP - 2 * GAP);
-    c.fill_round_rect(disp, 6, 0xFFD8E4C8);
+    c.fill_rect(disp, theme::BG);
+    c.rect_outline(disp, theme::LINE);
     if let Some(op) = calc.op {
-        c.draw_text(font, disp.x + 8, disp.y + 6, &format!("{} {}", format_num(calc.acc.unwrap_or(0.0)), op), 0xFF607050, None);
+        c.draw_text(font, disp.x + 8, disp.y + 6, &format!("{} {}", format_num(calc.acc.unwrap_or(0.0)), op), theme::AMBER, None);
     }
     let tw = font.text_width(&calc.display) * 2;
     // Big digits: draw each glyph scaled 2x.
     let mut small = Canvas::new(font.text_width(&calc.display), 16);
-    small.fill_rect(small.bounds(), 0xFFD8E4C8);
-    small.draw_text(font, 0, 0, &calc.display, 0xFF1A2410, None);
+    small.fill_rect(small.bounds(), theme::BG);
+    small.draw_text(font, 0, 0, &calc.display, theme::BRIGHT, None);
     let (x0, y0) = (disp.right() - tw - 10, disp.y + 22);
     for y in 0..32 {
         for x in 0..tw {
             c.put(x0 + x, y0 + y, small.get(x / 2, y / 2));
         }
     }
+    theme::scanlines(&mut c, disp.inset(1));
     for (r, row) in KEYS.iter().enumerate() {
         for (k, label) in row.iter().enumerate() {
             let b = button_rect(r, k);
             let op = "+-*/=".contains(label) && label.len() == 1;
-            let (top, bottom) = if calc.pressed == Some((r, k)) {
-                (0xFF3C4F6E, 0xFF2D3D57)
+            let digit = label.chars().next().is_some_and(|ch| ch.is_ascii_digit()) || *label == ".";
+            let (bg, fg, line) = if calc.pressed == Some((r, k)) {
+                (theme::ACCENT, theme::BG, theme::ACCENT)
             } else if op {
-                (0xFFF0A040, 0xFFD07F20)
-            } else if label.chars().next().is_some_and(|ch| ch.is_ascii_digit()) || *label == "." {
-                (0xFF5A606A, 0xFF454A52)
+                (theme::RAISED, theme::AMBER, theme::AMBER)
+            } else if digit {
+                (theme::RAISED, theme::BRIGHT, theme::LINE)
             } else {
-                (0xFF7A808A, 0xFF62676F)
+                (theme::BG, theme::TEXT, theme::LINE_DIM)
             };
-            c.fill_round_rect(b, 6, bottom);
-            c.gradient(Rect::new(b.x + 2, b.y + 1, b.w - 4, b.h / 2), top, bottom);
+            c.fill_rect(b, bg);
+            c.rect_outline(b, line);
             let lw = font.text_width(label);
-            c.draw_text_bold(font, b.x + (b.w - lw) / 2, b.y + (b.h - 16) / 2, label, 0xFFFFFFFF);
+            c.draw_text_bold(font, b.x + (b.w - lw) / 2, b.y + (b.h - 16) / 2, label, fg);
         }
     }
     d.put_canvas(win, &c, c.bounds(), 0, 0);

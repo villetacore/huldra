@@ -1,2 +1,11 @@
-Files in this directory are part of the initrd, which becomes the root file system.
-The IDE disk (ext2) is mounted on /mnt.
+Welcome to Huldra.
+
+The root file system lives on the IDE disk (ext2 on /dev/hda); files you
+create here survive reboots. Documentation and examples are in
+/usr/share/huldra (see /usr/share/huldra/README).
+
+  help              shell commands
+  startgui          the graphical session (startgui tilewm for tiling)
+  hack              break into a security terminal (a word game)
+  mines, blocks     minesweeper and falling blocks (in the graphical session)
+  pkg update        then pkg search / pkg install cowsay fortune 2048 sl snake

@@ -4,43 +4,43 @@ version = 4
 
 [[package]]
 name = "huldra-abi"
-version = "0.2.0"
+version = "0.3.0"
 
 [[package]]
 name = "huldra-archive"
-version = "0.2.0"
+version = "0.3.0"
 
 [[package]]
 name = "huldra-buddy"
-version = "0.2.0"
+version = "0.3.0"
 
 [[package]]
 name = "huldra-cpio"
-version = "0.2.0"
+version = "0.3.0"
 
 [[package]]
 name = "huldra-elf"
-version = "0.2.0"
+version = "0.3.0"
 
 [[package]]
 name = "huldra-ext2"
-version = "0.2.0"
+version = "0.3.0"
 
 [[package]]
 name = "huldra-gfx"
-version = "0.2.0"
+version = "0.3.0"
 
 [[package]]
 name = "huldra-hcc"
-version = "0.2.0"
+version = "0.3.0"
 
 [[package]]
 name = "huldra-kalloc"
-version = "0.2.0"
+version = "0.3.0"
 
 [[package]]
 name = "huldra-kernel"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "huldra-abi",
  "huldra-buddy",
@@ -53,18 +53,18 @@ dependencies = [
 
 [[package]]
 name = "huldra-net"
-version = "0.2.0"
+version = "0.3.0"
 
 [[package]]
 name = "huldra-pkg"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "huldra-archive",
 ]
 
 [[package]]
 name = "huldra-user"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "huldra-abi",
  "huldra-archive",
@@ -77,7 +77,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "huldra-cpio",
  "huldra-ext2",

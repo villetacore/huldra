@@ -14,6 +14,37 @@ const DEFAULT_ATTR: u8 = 0x07;
 /// ANSI color index (0..8) to VGA color index.
 const ANSI_TO_VGA: [u8; 8] = [0, 4, 2, 6, 1, 5, 3, 7];
 
+/// The 16 text colors (in VGA order: black, blue, green, cyan, red,
+/// magenta, brown, grey, then the bright ones), retuned like an old
+/// phosphor monitor: a dark green-grey screen, soft green text, and the
+/// other colors tinted to match. The same palette as the graphical
+/// terminal (huldra-gfx `term::PALETTE`).
+const PALETTE: [u32; 16] = [
+    0x0C1712, 0x4F9C94, 0x5FD27E, 0x62C8AE, 0xD9694C, 0xB08AA6, 0xE0B04E, 0x96E6A8, //
+    0x3E6250, 0x7FCFC6, 0x9AF7AE, 0x9EF2D6, 0xF28C6C, 0xD4AECB, 0xFFD27E, 0xDCFFE2,
+];
+
+/// DAC entries the attribute controller uses for the 16 text colors.
+const DAC_INDEX: [u8; 16] = [0, 1, 2, 3, 4, 5, 0x14, 7, 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F];
+
+/// Loads the palette and switches to a block cursor. Call at boot, before
+/// the frame buffer driver saves the text mode state.
+pub fn init() {
+    unsafe {
+        for (i, &rgb) in PALETTE.iter().enumerate() {
+            outb(0x3C8, DAC_INDEX[i]);
+            outb(0x3C9, (rgb >> 18) as u8 & 0x3F);
+            outb(0x3C9, (rgb >> 10) as u8 & 0x3F);
+            outb(0x3C9, (rgb >> 2) as u8 & 0x3F);
+        }
+        // Cursor scanlines 0..=15: a full block, like a terminal of the 70s.
+        outb(0x3D4, 0x0A);
+        outb(0x3D5, 0x00);
+        outb(0x3D4, 0x0B);
+        outb(0x3D5, 0x0F);
+    }
+}
+
 enum Escape {
     None,
     Esc,

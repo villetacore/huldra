@@ -35,6 +35,7 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 #[no_mangle]
 pub extern "C" fn kernel_main(magic: u32, info: u32) -> ! {
     drivers::serial::init();
+    drivers::vga::init();
     console::clear();
     println!("\x1b[96m{} {} (x86_64)\x1b[0m", NAME, VERSION);
 

@@ -18,6 +18,7 @@ use huldra_abi::net::MSG_DONTWAIT;
 pub use huldra_gfx::canvas::{rgb, Canvas, Rect};
 pub use huldra_gfx::font::Font;
 pub use huldra_gfx::proto::*;
+pub use huldra_gfx::theme;
 use huldra_net::Ip;
 
 pub const FONT_W: i32 = 8;

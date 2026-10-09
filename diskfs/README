@@ -12,3 +12,6 @@ Network:   ifconfig; ping 10.0.2.2; wget http://host/file; httpd &
 Editors:   edit FILE (Ctrl+S save, Ctrl+Q quit), less FILE, fm
 Graphics:  startgui (or startgui tilewm); right-click the desktop for a menu;
            examples/window.c shows a window from C (cc -run window.c)
+Games:     hack (any terminal); mines and blocks (graphical session)
+Look:      a green phosphor terminal; /etc/gui.conf "crt = off" removes
+           the scanlines

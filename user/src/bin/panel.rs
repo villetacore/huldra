@@ -12,14 +12,21 @@ use huldra_user::{eprintln, format, String, Vec};
 huldra_user::main!(main);
 
 const HEIGHT: i32 = 26;
-const BG_TOP: u32 = 0xFF3A3F48;
-const BG_BOTTOM: u32 = 0xFF1E2228;
-const TEXT: u32 = 0xFFE8E8E8;
-const ACTIVE: u32 = 0xFF4E6E9A;
 const MENU_W: i32 = 92;
 const CLOCK_W: i32 = 80;
 
-const APPS: &[(&str, &str)] = &[("Terminal", "term"), ("Files", "files"), ("Clock", "clock"), ("Calculator", "calc"), ("Paint", "paint"), ("System info", "sysinfo"), ("Run...", "menu")];
+const APPS: &[(&str, &str)] = &[
+    ("Terminal", "term"),
+    ("Files", "files"),
+    ("Clock", "clock"),
+    ("Calculator", "calc"),
+    ("Paint", "paint"),
+    ("System info", "sysinfo"),
+    ("Mines", "mines"),
+    ("Blocks", "blocks"),
+    ("Terminal hack", "term -e hack"),
+    ("Run...", "menu"),
+];
 
 struct Item {
     id: u32,
@@ -57,28 +64,31 @@ impl Panel {
 
     fn draw(&mut self) {
         let mut c = Canvas::new(self.width, HEIGHT);
-        c.gradient(c.bounds(), BG_TOP, BG_BOTTOM);
-        c.fill_rect(Rect::new(0, 0, self.width, 1), 0xFF5A606A);
-        // Menu button.
+        c.fill_rect(c.bounds(), theme::SURFACE);
+        c.fill_rect(Rect::new(0, 0, self.width, 1), theme::LINE);
+        // Menu button: inverse video while the menu is open.
         let mb = Rect::new(3, 3, MENU_W - 6, HEIGHT - 6);
-        c.fill_round_rect(mb, 4, if self.menu.is_some() { ACTIVE } else { 0xFF2C6E49 });
-        c.draw_text_bold(&self.font, mb.x + 10, 5, "Huldra", TEXT);
+        let open = self.menu.is_some();
+        c.fill_rect(mb, if open { theme::ACCENT } else { theme::BG });
+        c.rect_outline(mb, theme::ACCENT);
+        c.draw_text_bold(&self.font, mb.x + 8, 5, ">HULDRA", if open { theme::BG } else { theme::ACCENT });
         // Status (workspaces).
         if !self.status.is_empty() {
-            c.draw_text(&self.font, MENU_W + 8, 5, &self.status, 0xFFFFD27A, None);
+            c.draw_text(&self.font, MENU_W + 8, 5, &self.status, theme::AMBER, None);
         }
         // Windows.
         for (i, r) in self.buttons() {
             let it = &self.items[i];
-            let bg = if it.id == self.focus { ACTIVE } else if it.mapped { 0xFF454B55 } else { 0xFF2A2E35 };
-            c.fill_round_rect(r, 3, bg);
+            let focused = it.id == self.focus;
+            c.fill_rect(r, if focused { theme::HOVER } else { theme::BG });
+            c.rect_outline(r, if focused { theme::ACCENT } else if it.mapped { theme::LINE } else { theme::LINE_DIM });
             let max = ((r.w - 12) / FONT_W).max(0) as usize;
             let mut t: String = it.title.chars().take(max).collect();
             if t.is_empty() {
                 t = String::from("(untitled)");
             }
             c.set_clip(r);
-            c.draw_text(&self.font, r.x + 6, 5, &t, if it.mapped { TEXT } else { 0xFF9A9A9A }, None);
+            c.draw_text(&self.font, r.x + 6, 5, &t, if focused { theme::BRIGHT } else if it.mapped { theme::TEXT } else { theme::TEXT_DIM }, None);
             c.reset_clip();
         }
         self.draw_clock(&mut c);
@@ -91,13 +101,13 @@ impl Panel {
         let t = DateTime::from_unix(time::now());
         let s = format!("{:02}:{:02}:{:02}", t.hour, t.minute, t.second);
         let x = self.width - CLOCK_W;
-        c.gradient(Rect::new(x, 1, CLOCK_W, HEIGHT - 1), BG_TOP, BG_BOTTOM);
-        c.draw_text(&self.font, x + (CLOCK_W - self.font.text_width(&s)) / 2, 5, &s, TEXT, None);
+        c.fill_rect(Rect::new(x, 1, CLOCK_W, HEIGHT - 1), theme::SURFACE);
+        c.fill_rect(Rect::new(x, 4, 1, HEIGHT - 8), theme::LINE_DIM);
+        c.draw_text(&self.font, x + (CLOCK_W - self.font.text_width(&s)) / 2, 5, &s, theme::AMBER, None);
     }
 
     fn tick(&mut self) {
         let mut c = Canvas::new(self.width, HEIGHT);
-        c.gradient(c.bounds(), BG_TOP, BG_BOTTOM);
         self.draw_clock(&mut c);
         let x = self.width - CLOCK_W;
         let win = self.win;
@@ -124,14 +134,17 @@ impl Panel {
     fn draw_menu(&mut self) {
         let Some((win, r, hover)) = self.menu else { return };
         let mut c = Canvas::new(r.w, r.h);
-        c.gradient(c.bounds(), 0xFF2E333B, 0xFF22262C);
-        c.rect_outline(c.bounds(), 0xFF5A606A);
+        c.fill_rect(c.bounds(), theme::SURFACE);
+        c.rect_outline(c.bounds(), theme::ACCENT);
+        c.rect_outline(c.bounds().inset(2), theme::LINE_DIM);
         for (i, (label, _)) in APPS.iter().enumerate() {
             let row = Rect::new(4, 4 + i as i32 * 24, r.w - 8, 24);
-            if hover == Some(i) {
-                c.fill_round_rect(row, 3, ACTIVE);
+            let hot = hover == Some(i);
+            if hot {
+                c.fill_rect(row, theme::ACCENT);
+                c.draw_text_bold(&self.font, row.x + 4, row.y + 4, ">", theme::BG);
             }
-            c.draw_text(&self.font, row.x + 10, row.y + 4, label, TEXT, None);
+            c.draw_text(&self.font, row.x + 16, row.y + 4, label, if hot { theme::BG } else { theme::TEXT }, None);
         }
         self.d.put_canvas(win, &c, c.bounds(), 0, 0);
         self.d.flush();

@@ -48,7 +48,8 @@ fn main() -> i32 {
         return 1;
     }
     println!("startgui: starting the display ({}), {}", if mode.is_empty() { "1024x768" } else { &mode }, wm);
-    let Some(display) = start(&if mode.is_empty() { String::from("display") } else { huldra_user::format!("display {}", mode) }) else {
+    let crt = if conf("crt").is_some_and(|v| v == "off" || v == "no") { " --no-crt" } else { "" };
+    let Some(display) = start(&huldra_user::format!("display{} {}", crt, mode)) else {
         eprintln!("startgui: cannot start display");
         return 1;
     };

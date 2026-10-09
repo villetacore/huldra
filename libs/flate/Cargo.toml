@@ -1,0 +1,9 @@
+[package]
+name = "huldra-flate"
+description = "DEFLATE, zlib and gzip: decompression and compression"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+

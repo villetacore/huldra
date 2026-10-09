@@ -1,2 +1,4 @@
 * text=auto eol=lf
 *.ps1 text eol=crlf
+libs/flate/testdata/** binary
+libs/crypto/testdata/vectors.txt -diff

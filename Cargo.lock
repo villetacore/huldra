@@ -19,6 +19,10 @@ name = "huldra-cpio"
 version = "0.4.0"
 
 [[package]]
+name = "huldra-crypto"
+version = "0.4.0"
+
+[[package]]
 name = "huldra-elf"
 version = "0.4.0"
 
@@ -27,11 +31,19 @@ name = "huldra-ext2"
 version = "0.4.0"
 
 [[package]]
+name = "huldra-flate"
+version = "0.4.0"
+
+[[package]]
 name = "huldra-gfx"
 version = "0.4.0"
 
 [[package]]
 name = "huldra-hcc"
+version = "0.4.0"
+
+[[package]]
+name = "huldra-http"
 version = "0.4.0"
 
 [[package]]

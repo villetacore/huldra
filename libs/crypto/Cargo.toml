@@ -1,0 +1,9 @@
+[package]
+name = "huldra-crypto"
+description = "Hashes, MACs, ciphers, key exchange and signatures for TLS and git"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+

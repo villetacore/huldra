@@ -113,6 +113,16 @@ pub fn readlink(path: &str) -> Result<String> {
     Ok(String::from_utf8_lossy(&buf).into_owned())
 }
 
+/// Fills `buf` from the kernel's random generator.
+pub fn getrandom(buf: &mut [u8]) -> Result<()> {
+    let mut done = 0;
+    while done < buf.len() {
+        let n = check(unsafe { syscall3(nr::GETRANDOM, buf[done..].as_mut_ptr() as usize, buf.len() - done, 0) })?;
+        done += n as usize;
+    }
+    Ok(())
+}
+
 pub fn fstat(fd: i32) -> Result<Stat> {
     let mut st = Stat::default();
     check(unsafe { syscall3(nr::FSTAT, fd as usize, &mut st as *mut Stat as usize, 0) })?;

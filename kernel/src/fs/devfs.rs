@@ -125,18 +125,7 @@ fn discard(buf: &[u8]) -> KResult<usize> {
 }
 
 fn random_bytes(buf: &mut [u8]) -> KResult<usize> {
-    static STATE: SpinLock<u64> = SpinLock::new(0);
-    let mut s = STATE.lock();
-    if *s == 0 {
-        *s = crate::arch::cpu::rdtsc() | 1;
-    }
-    for b in buf.iter_mut() {
-        // xorshift64*: fine for /dev/urandom in a hobby kernel, not for crypto.
-        *s ^= *s >> 12;
-        *s ^= *s << 25;
-        *s ^= *s >> 27;
-        *b = (s.wrapping_mul(0x2545_F491_4F6C_DD1D) >> 56) as u8;
-    }
+    crate::random::fill(buf);
     Ok(buf.len())
 }
 

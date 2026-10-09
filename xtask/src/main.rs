@@ -9,6 +9,7 @@ mod help;
 mod image;
 mod qemu;
 mod repo;
+mod web;
 
 use std::env;
 use std::fs;
@@ -313,6 +314,7 @@ fn system_files() -> Result<Vec<image::ImageFile>> {
     let mut files = image::collect_tree(&root().join("rootfs"))?;
     files.extend(build_user()?);
     files.extend(help::files()?);
+    files.extend(web::ca_files());
     Ok(files)
 }
 
@@ -374,10 +376,18 @@ fn session(args: &[String]) -> Result {
     let script = args.first().ok_or("usage: cargo xtask session FILE")?;
     let mut artifacts = build_with(&Options::default(), false)?;
     start_repo_server(repo::TEST_PORT);
+    let _web = web::start_server();
     let disk = target_dir().join("session-disk.img");
-    disk::create_image(&disk, &disk_files(&system_files()?)?)?;
+    disk::create_image(&disk, &test_disk_files()?)?;
     artifacts.disk = Some(disk);
     qemu::shell_session(&artifacts, Path::new(script))
+}
+
+/// The system disk plus what only tests may have (the test CA).
+fn test_disk_files() -> Result<Vec<image::ImageFile>> {
+    let mut files = disk_files(&system_files()?)?;
+    files.push(web::test_root());
+    Ok(files)
 }
 
 /// Builds the package repository and serves it while QEMU runs.
@@ -410,7 +420,7 @@ fn test(options: &Options) -> Result {
     let mut artifacts = build_with(options, false)?;
     start_repo_server(repo::TEST_PORT);
     let test_disk = target_dir().join("test-disk.img");
-    disk::create_image(&test_disk, &disk_files(&system_files()?)?)?;
+    disk::create_image(&test_disk, &test_disk_files()?)?;
     artifacts.disk = Some(test_disk.clone());
 
     println!("==> in-kernel tests");
@@ -426,6 +436,11 @@ fn test(options: &Options) -> Result {
 
     println!("==> package manager");
     qemu::shell_session(&artifacts, &root().join("tests").join("pkg.txt"))?;
+
+    if let Some(_web) = web::start_server() {
+        println!("==> networking: HTTP, HTTPS, downloads");
+        qemu::shell_session(&artifacts, &root().join("tests").join("net.txt"))?;
+    }
 
     if target_dir().join("linux-bin").join("hello").exists() {
         println!("==> Linux binaries");

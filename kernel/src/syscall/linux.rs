@@ -161,9 +161,8 @@ pub fn clock_getres(a: &mut Args) -> KResult<Ret> {
 
 pub fn getrandom(a: &mut Args) -> KResult<Ret> {
     let len = (a.a1() as usize).min(1 << 20);
-    let dev = fs::open("/dev/urandom", huldra_abi::fs::O_RDONLY, 0)?;
     let mut buf = alloc::vec![0u8; len];
-    dev.read(&mut buf)?;
+    crate::random::fill(&mut buf);
     uaccess::copy_to_user(a.a0(), &buf)?;
     value(len as u64)
 }

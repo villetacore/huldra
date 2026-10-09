@@ -64,6 +64,7 @@ pub fn using_apic() -> bool {
 /// Runs the handler for `irq` and acknowledges the interrupt.
 pub fn dispatch(irq: u8) {
     COUNTS[irq as usize].fetch_add(1, Ordering::Relaxed);
+    crate::random::add_event(irq as u64);
     let handler = LINES.lock()[irq as usize].handler;
     if let Some(h) = handler {
         h();

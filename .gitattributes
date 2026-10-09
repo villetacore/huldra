@@ -2,3 +2,4 @@
 *.ps1 text eol=crlf
 libs/flate/testdata/** binary
 libs/crypto/testdata/vectors.txt -diff
+libs/tls/testdata/*.der binary

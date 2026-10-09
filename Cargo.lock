@@ -57,6 +57,7 @@ dependencies = [
  "huldra-abi",
  "huldra-buddy",
  "huldra-cpio",
+ "huldra-crypto",
  "huldra-elf",
  "huldra-ext2",
  "huldra-kalloc",
@@ -79,17 +80,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "huldra-tls"
+version = "0.4.0"
+dependencies = [
+ "huldra-crypto",
+]
+
+[[package]]
 name = "huldra-user"
 version = "0.4.0"
 dependencies = [
  "huldra-abi",
  "huldra-archive",
+ "huldra-crypto",
+ "huldra-flate",
  "huldra-gfx",
  "huldra-hcc",
+ "huldra-http",
  "huldra-kalloc",
  "huldra-md",
  "huldra-net",
  "huldra-pkg",
+ "huldra-tls",
 ]
 
 [[package]]

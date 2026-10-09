@@ -29,7 +29,7 @@ pub fn exit_qemu(success: bool) -> ! {
 
 pub fn run_all() -> ! {
     RUNNING.store(true, Ordering::Relaxed);
-    let suites: &[&[Test]] = &[crate::mm::TESTS, crate::task::TESTS, crate::fs::TESTS];
+    let suites: &[&[Test]] = &[crate::mm::TESTS, crate::task::TESTS, crate::fs::TESTS, crate::random::TESTS];
     let total: usize = suites.iter().map(|s| s.len()).sum();
     println!("running {} kernel tests", total);
     for test in suites.iter().flat_map(|s| s.iter()) {

@@ -11,6 +11,7 @@ extern crate alloc;
 pub mod env;
 pub mod fs;
 pub mod gui;
+pub mod http;
 pub mod io;
 pub mod net;
 pub mod process;

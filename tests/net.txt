@@ -1,0 +1,45 @@
+# HTTP and HTTPS against tests/net/server.py on the host (xtask starts it:
+# 10.0.2.2:8810 plain, 8811 TLS 1.3 with a certificate from the test CA).
+> until grep -q bound /proc/net/if; do sleep 0.2; done
+> cd /tmp
+> wget -q -O - http://10.0.2.2:8810/hello.txt
+< hello over http
+> wget -q -O - https://10.0.2.2:8811/hello.txt
+< hello over https
+> wget -O - https://10.0.2.2:8811/chunked
+< chunked transfer works
+> wget -S -O r.txt http://10.0.2.2:8810/redirect; cat r.txt
+< redirected to https://10.0.2.2:8811/hello.txt
+< hello over https
+> wget -q -O - --compressed https://10.0.2.2:8811/gzip | grep -c 'gzip decoded fine'
+< 50
+> wget -O - --post-data "q=huldra" https://10.0.2.2:8811/echo
+< you sent: q=huldra
+> wget https://10.0.2.2:8811/big
+< 100% [====================]
+< saved big (1024.0 KiB)
+> sha256sum big
+< bcadd2776ed87ebc8b4b9098172cc5469df09b2ebb0f565d487097c85ebab320
+> head -c 1000 big > part && mv part big2 && wget -c -O big2 http://10.0.2.2:8810/big && cmp big big2 && echo resumed-ok
+< resumed-ok
+> wget -c -O big2 http://10.0.2.2:8810/big
+< already complete
+> wget http://10.0.2.2:8810/missing; echo status=$?
+< server answered 404 Not Found
+< status=1
+> ls missing; echo status=$?
+< status=1
+> wget -q -O - https://test.huldra:8811/hello.txt; echo status=$?
+< status=1
+> echo "10.0.2.2 test.huldra" >> /etc/hosts; wget -q -O - https://test.huldra:8811/hello.txt
+< hello over https
+> echo "10.0.2.2 wrong.huldra" >> /etc/hosts; wget -q -O - https://wrong.huldra:8811/hello.txt; echo status=$?
+< certificate is for test.huldra
+< status=1
+> wget -q -O - --insecure https://wrong.huldra:8811/hello.txt
+< hello over https
+> mv /etc/ssl/certs/huldra-test-root.pem /tmp/; wget -q -O - https://10.0.2.2:8811/hello.txt; echo status=$?
+< not trusted
+< status=1
+> mv /tmp/huldra-test-root.pem /etc/ssl/certs/; echo restored
+< restored

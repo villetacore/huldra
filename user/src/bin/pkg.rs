@@ -32,7 +32,7 @@ use huldra_pkg::system::{self as decl, Manifest, Request, SystemConfig};
 use huldra_pkg::{self as pkg, IndexEntry, PkgInfo};
 use huldra_user::abi::fs::{O_CREAT, O_EXCL, O_TRUNC, O_WRONLY};
 use huldra_user::time::{self, DateTime};
-use huldra_user::{env, eprint, eprintln, format, fs, net, println, process, Errno, String, ToString, Vec};
+use huldra_user::{env, eprint, eprintln, format, fs, http, println, process, Errno, String, ToString, Vec};
 
 huldra_user::main!(main);
 
@@ -121,7 +121,14 @@ fn parse_config(text: &str) -> Result<SystemConfig> {
 
 fn download(url: &str, label: &str) -> Result<Vec<u8>> {
     let mut last = 0;
-    let r = net::http_get(url, |n, total| {
+    let mut body = Vec::new();
+    // Packages are compressed already; the index is small.
+    let opts = http::Options { gzip: false, ..http::Options::default() };
+    let req = huldra_http::Request::get(huldra_http::Url::parse(url)?);
+    let r = http::fetch(req, &opts, &mut |_, b| {
+        body.extend_from_slice(b);
+        Ok(())
+    }, &mut |n, total| {
         if n - last >= 32768 || Some(n) == total {
             last = n;
             if let Some(t) = total {
@@ -130,11 +137,11 @@ fn download(url: &str, label: &str) -> Result<Vec<u8>> {
         }
     });
     eprint!("\r\x1b[K");
-    let resp = r.map_err(|e| format!("{}: {}", url, if e == Errno::ENOENT { "unknown host" } else { e.message() }))?;
-    if resp.status != 200 {
-        return Err(format!("{}: HTTP {}", url, resp.status));
+    let (_, head) = r.map_err(|e| format!("{}: {}", url, e))?;
+    if head.status != 200 {
+        return Err(format!("{}: HTTP {}", url, http::status_text(&head)));
     }
-    Ok(resp.body)
+    Ok(body)
 }
 
 fn update(cfg: &SystemConfig) -> Result<Vec<IndexEntry>> {

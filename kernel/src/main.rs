@@ -19,6 +19,7 @@ mod fs;
 mod mm;
 mod net;
 mod proc;
+mod random;
 mod sync;
 mod syscall;
 mod task;
@@ -65,6 +66,7 @@ pub extern "C" fn kernel_main(magic: u32, info: u32) -> ! {
     mm::vmm::init(boot);
     mm::frame::add_high_memory(boot);
     arch::init_apic();
+    random::init();
     let (free, _) = mm::frame::stats();
     let k = mm::kernel_layout();
     kinfo!(

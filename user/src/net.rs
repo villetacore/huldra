@@ -1,7 +1,7 @@
 //! IPv4 sockets and name resolution.
 
 use crate::sys::{check, syscall6};
-use crate::{fs, Errno, Result, String, Vec};
+use crate::{fs, Errno, Result, Vec};
 use huldra_abi::net::*;
 use huldra_abi::syscall as nr;
 pub use huldra_net::Ip;
@@ -194,74 +194,6 @@ pub fn tcp_connect(host: &str, port: u16) -> Result<Socket> {
     let s = Socket::tcp()?;
     s.connect(ip, port)?;
     Ok(s)
-}
-
-/// `http://host[:port]/path` → (host, port, path)
-pub fn parse_http_url(url: &str) -> Option<(String, u16, String)> {
-    let rest = url.strip_prefix("http://").unwrap_or(url);
-    let (hostport, path) = match rest.find('/') {
-        Some(i) => (&rest[..i], &rest[i..]),
-        None => (rest, "/"),
-    };
-    let (host, port) = match hostport.rsplit_once(':') {
-        Some((h, p)) => (h, p.parse().ok()?),
-        None => (hostport, 80),
-    };
-    if host.is_empty() {
-        return None;
-    }
-    Some((String::from(host), port, String::from(path)))
-}
-
-pub struct HttpResponse {
-    pub status: u16,
-    pub headers: Vec<(String, String)>,
-    pub body: Vec<u8>,
-}
-
-impl HttpResponse {
-    pub fn header(&self, name: &str) -> Option<&str> {
-        self.headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v.as_str())
-    }
-}
-
-/// Sends an HTTP/1.0 GET and returns the response. `progress` is called
-/// with (bytes so far, total if known) as the body arrives.
-pub fn http_get(url: &str, mut progress: impl FnMut(usize, Option<usize>)) -> Result<HttpResponse> {
-    let (host, port, path) = parse_http_url(url).ok_or(Errno::EINVAL)?;
-    let s = tcp_connect(&host, port)?;
-    let req = crate::format!("GET {} HTTP/1.0\r\nHost: {}\r\nUser-Agent: huldra\r\nConnection: close\r\n\r\n", path, host);
-    s.send_all(req.as_bytes())?;
-    let mut data = Vec::new();
-    let mut buf = [0u8; 8192];
-    let mut header_end = None;
-    let mut total = None;
-    loop {
-        let n = s.recv(&mut buf)?;
-        if n == 0 {
-            break;
-        }
-        data.extend_from_slice(&buf[..n]);
-        if header_end.is_none() {
-            if let Some(i) = data.windows(4).position(|w| w == b"\r\n\r\n") {
-                header_end = Some(i + 4);
-                let head = String::from_utf8_lossy(&data[..i]);
-                total = head.lines().find_map(|l| {
-                    let (k, v) = l.split_once(':')?;
-                    k.trim().eq_ignore_ascii_case("content-length").then(|| v.trim().parse().ok()).flatten()
-                });
-            }
-        }
-        if let Some(h) = header_end {
-            progress(data.len() - h, total);
-        }
-    }
-    let h = header_end.ok_or(Errno::EIO)?;
-    let head = String::from_utf8_lossy(&data[..h - 4]).into_owned();
-    let mut lines = head.lines();
-    let status = lines.next().and_then(|l| l.split_whitespace().nth(1)).and_then(|c| c.parse().ok()).ok_or(Errno::EIO)?;
-    let headers = lines.filter_map(|l| l.split_once(':').map(|(k, v)| (String::from(k.trim()), String::from(v.trim())))).collect();
-    Ok(HttpResponse { status, headers, body: data[h..].to_vec() })
 }
 
 /// `recv` with flags (`MSG_DONTWAIT`...).

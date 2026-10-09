@@ -32,7 +32,21 @@ pub fn compile(sources: &[PathBuf], out: &Path) -> Result {
     let refs: Vec<&str> = names.iter().map(|s| s.as_str()).collect();
     let elf =
         huldra_hcc::compile(&HostFs, &refs, &Options::default()).map_err(|e| e.to_string())?;
-    fs::write(out, elf).map_err(|e| format!("{}: {e}", out.display()))
+    fs::write(out, elf).map_err(|e| format!("{}: {e}", out.display()))?;
+    make_executable(out)
+}
+
+#[cfg(unix)]
+fn make_executable(path: &Path) -> Result {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(path, fs::Permissions::from_mode(0o755))
+        .map_err(|e| format!("{}: {e}", path.display()))
+}
+
+/// Windows has no execute bit; WSL treats files on /mnt as executable.
+#[cfg(not(unix))]
+fn make_executable(_: &Path) -> Result {
+    Ok(())
 }
 
 /// `cargo xtask cc file.c... [-o out]`

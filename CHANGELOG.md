@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-10-09
+
 ### Добавлено
 
 - **Декларативное управление системой в духе NixOS.** Вся система
@@ -50,6 +52,9 @@
 
 ### Исправлено
 
+- Ядро падало при загрузке в QEMU на GitHub (page fault в драйвере
+  vmmouse): гипервизор меняет и `esi`/`edi`, а ассемблерная вставка их не
+  объявляла. Из-за этого не проходил CI и не собирался релиз.
 - CI: программы, собранные hcc, на Linux не получали права на выполнение
   (`cannot run hello: Permission denied`).
 - CI: при падении сохранялись несуществующие файлы; теперь в артефакт
@@ -136,7 +141,8 @@
   вызовы, сигналы), init и shell, базовые утилиты.
 - `cargo xtask` и автоматические тесты в QEMU.
 
-[Unreleased]: https://github.com/villetacore/huldra/compare/v0.3.0...HEAD
-[0.3.0]: https://github.com/villetacore/huldra/compare/2167e63...v0.3.0
+[Unreleased]: https://github.com/villetacore/huldra/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/villetacore/huldra/compare/6617567...v0.4.0
+[0.3.0]: https://github.com/villetacore/huldra/compare/2167e63...6617567
 [0.2.0]: https://github.com/villetacore/huldra/compare/86867da...2167e63
 [0.1.0]: https://github.com/villetacore/huldra/tree/86867da

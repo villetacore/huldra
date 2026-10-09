@@ -39,6 +39,14 @@ name = "huldra-gfx"
 version = "0.4.0"
 
 [[package]]
+name = "huldra-git"
+version = "0.4.0"
+dependencies = [
+ "huldra-crypto",
+ "huldra-flate",
+]
+
+[[package]]
 name = "huldra-hcc"
 version = "0.4.0"
 

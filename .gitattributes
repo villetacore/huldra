@@ -3,3 +3,6 @@
 libs/flate/testdata/** binary
 libs/crypto/testdata/vectors.txt -diff
 libs/tls/testdata/*.der binary
+libs/git/testdata/*.pack binary
+libs/git/testdata/*.idx binary
+libs/git/testdata/*.bin binary

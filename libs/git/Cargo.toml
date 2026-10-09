@@ -1,0 +1,10 @@
+[package]
+name = "huldra-git"
+description = "Git objects, pack files, the index and the smart HTTP protocol, without I/O"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+huldra-crypto = { path = "../crypto" }
+huldra-flate = { path = "../flate" }

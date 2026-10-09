@@ -1,6 +1,6 @@
 """Test web server for tests/net.txt, started by `cargo xtask test`.
 
-    python3 tests/net/server.py HTTP_PORT HTTPS_PORT CERT KEY
+    python3 tests/net/server.py HTTP_PORT HTTPS_PORT CERT KEY [GIT_ROOT]
 
 Serves the same handler over HTTP and HTTPS (TLS 1.3 only):
 
@@ -11,10 +11,13 @@ Serves the same handler over HTTP and HTTPS (TLS 1.3 only):
   /big              1 MiB of predictable bytes, with Range support
   /echo             POST: echoes the body back
   /page.html        an HTML page with links and a form (for the browser)
+  /git/...          repositories under GIT_ROOT through `git http-backend`
+                    (smart HTTP, push allowed)
 """
-import gzip, http.server, os, socketserver, ssl, sys, threading
+import gzip, http.server, os, socketserver, ssl, subprocess, sys, threading
 
 HTTP_PORT, HTTPS_PORT, CERT, KEY = int(sys.argv[1]), int(sys.argv[2]), sys.argv[3], sys.argv[4]
+GIT_ROOT = sys.argv[5] if len(sys.argv) > 5 else None
 BIG = bytes((i * 7 + i // 256) % 251 for i in range(1 << 20))
 PAGE = b"""<!doctype html><html><head><title>Huldra test page</title></head>
 <body><h1>Test page</h1><p>Hello from the <b>test</b> server. <a href="/hello.txt">a text file</a>
@@ -42,9 +45,30 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if self.command != "HEAD":
             self.wfile.write(body)
 
+    def git(self, body=b""):
+        path, _, query = self.path[4:].partition("?")
+        env = dict(os.environ, GIT_PROJECT_ROOT=GIT_ROOT, GIT_HTTP_EXPORT_ALL="1", PATH_INFO=path, QUERY_STRING=query,
+                   REQUEST_METHOD=self.command, CONTENT_TYPE=self.headers.get("Content-Type", ""),
+                   CONTENT_LENGTH=str(len(body)), REMOTE_ADDR="10.0.2.15", REMOTE_USER="huldra")
+        out = subprocess.run(["git", "http-backend"], input=body, env=env, capture_output=True).stdout
+        head, sep, data = out.partition(b"\r\n\r\n")
+        if not sep:
+            head, sep, data = out.partition(b"\n\n")
+        status, headers = 200, []
+        for line in head.decode("latin-1").splitlines():
+            k, _, v = line.partition(":")
+            if k.lower() == "status":
+                status = int(v.split()[0])
+            elif k:
+                headers.append((k, v.strip()))
+        self.send(status, data, dict(headers).get("Content-Type", "application/octet-stream"), [h for h in headers if h[0] != "Content-Type"])
+
     def do_GET(self):
         https = isinstance(self.connection, ssl.SSLSocket)
         p = self.path
+        if p.startswith("/git/") and GIT_ROOT:
+            self.git()
+            return
         if p == "/hello.txt":
             self.send(200, b"hello over %s\n" % (b"https" if https else b"http"))
         elif p == "/redirect":
@@ -86,7 +110,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         n = int(self.headers.get("Content-Length", "0"))
         body = self.rfile.read(n)
-        if self.path == "/echo":
+        if self.path.startswith("/git/") and GIT_ROOT:
+            self.git(body)
+        elif self.path == "/echo":
             self.send(200, b"you sent: " + body + b"\n")
         else:
             self.send(404, b"not found\n")

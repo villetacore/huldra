@@ -20,7 +20,7 @@ fn err(s: &str) -> Error {
 /// Applies a git delta to `base`.
 pub fn apply_delta(base: &[u8], delta: &[u8]) -> Result<Vec<u8>> {
     let mut p = 0;
-    let mut varint = |p: &mut usize| -> Result<usize> {
+    let varint = |p: &mut usize| -> Result<usize> {
         let (mut v, mut shift) = (0usize, 0);
         loop {
             let b = *delta.get(*p).ok_or_else(|| err("delta truncated"))?;

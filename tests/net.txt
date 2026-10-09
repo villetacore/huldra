@@ -43,3 +43,50 @@
 < status=1
 > mv /tmp/huldra-test-root.pem /etc/ssl/certs/; echo restored
 < restored
+# git against `git http-backend` on the host; xtask checks the pushed
+# commit with real git (fsck --strict) afterwards.
+> git config --global user.name "Huldra Tester" && git config --global user.email tester@huldra
+> cd /root && git clone http://10.0.2.2:8810/git/test.git
+< Cloning into 'test'...
+< Checked out 'main' (2 files)
+> cd test && git log --oneline
+< (HEAD -> main, origin/main) add main.c
+< first commit
+> cat README.md
+< served by the host
+> git status
+< nothing to commit, working tree clean
+> echo "hello from huldra" > hello.txt; echo "// edited" >> src/main.c; git status -s
+< ?? hello.txt
+<  M src/main.c
+> git diff | cat
+< diff --git a/src/main.c b/src/main.c
+< +// edited
+> git add -A && git status
+< new file:   hello.txt
+< modified:   src/main.c
+> git commit -m "edited on huldra"
+< edited on huldra
+< 2 files changed
+> git log -n 1 | cat
+< Author: Huldra Tester <tester@huldra>
+> git push
+< main -> main
+> git status
+< up to date with 'origin/main'
+> cd /root && git clone https://10.0.2.2:8811/git/test.git again && cat again/hello.txt
+< hello from huldra
+> cd again && git checkout -b feature && echo x > x.txt && git add x.txt && git commit -m "feature commit"
+< Switched to branch 'feature'
+< feature commit
+> git checkout main; ls x.txt; echo status=$?
+< Switched to branch 'main'
+< status=1
+> git branch
+< * main
+< feature
+> cd /root && git clone --depth 1 http://10.0.2.2:8810/git/test.git shallow && cd shallow && git log --oneline | cat
+< edited on huldra
+! first commit
+> cd /root/test && git pull
+< Already up to date

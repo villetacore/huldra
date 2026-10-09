@@ -23,3 +23,4 @@ huldra-http = { path = "../libs/http" }
 huldra-tls = { path = "../libs/tls" }
 huldra-flate = { path = "../libs/flate" }
 huldra-crypto = { path = "../libs/crypto" }
+huldra-git = { path = "../libs/git" }

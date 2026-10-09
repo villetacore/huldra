@@ -103,6 +103,7 @@ dependencies = [
  "huldra-crypto",
  "huldra-flate",
  "huldra-gfx",
+ "huldra-git",
  "huldra-hcc",
  "huldra-http",
  "huldra-kalloc",
@@ -111,6 +112,10 @@ dependencies = [
  "huldra-pkg",
  "huldra-tls",
 ]
+
+[[package]]
+name = "huldra-web"
+version = "0.4.0"
 
 [[package]]
 name = "xtask"

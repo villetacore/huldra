@@ -129,7 +129,7 @@
 > wget -q -O /tmp/os http://localhost:8080/os-release && cat /tmp/os
 < PRETTY_NAME
 > wget -O - http://127.0.0.1:8080/nothing
-< HTTP 404
+< server answered 404 Not Found
 > nc -l 7000 < /dev/null > /tmp/nc.out & sleep 0.3; echo over-tcp | nc 127.0.0.1 7000; sleep 0.3; cat /tmp/nc.out
 < over-tcp
 > cat /proc/net/sockets

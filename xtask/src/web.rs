@@ -4,7 +4,7 @@
 //! talks to.
 
 use crate::image::ImageFile;
-use crate::root;
+use crate::{root, target_dir, Result};
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
@@ -61,9 +61,66 @@ impl Drop for Server {
     }
 }
 
+fn git(dir: &std::path::Path, args: &[&str]) -> Result<String> {
+    let out = Command::new("git")
+        .args(["-c", "init.defaultBranch=main", "-c", "core.autocrlf=false", "-c", "user.name=Host", "-c", "user.email=host@test"])
+        .args(args)
+        .current_dir(dir)
+        .output()
+        .map_err(|e| format!("git: {e}"))?;
+    if !out.status.success() {
+        return Err(format!("git {}: {}", args.join(" "), String::from_utf8_lossy(&out.stderr)));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// A bare repository with two commits for tests/net.txt to clone and
+/// push to: target/git-server/test.git.
+pub fn prepare_git_repo() -> Option<PathBuf> {
+    let root = target_dir().join("git-server");
+    let _ = std::fs::remove_dir_all(&root);
+    let work = root.join("work");
+    let made = (|| -> Result<()> {
+        std::fs::create_dir_all(work.join("src")).map_err(|e| e.to_string())?;
+        git(&work, &["init", "-q", "."])?;
+        std::fs::write(work.join("README.md"), "# test repository\n\nserved by the host for Huldra's tests\n").map_err(|e| e.to_string())?;
+        git(&work, &["add", "."])?;
+        git(&work, &["commit", "-q", "-m", "first commit"])?;
+        std::fs::write(work.join("src/main.c"), "int main(void) { return 0; }\n").map_err(|e| e.to_string())?;
+        git(&work, &["add", "."])?;
+        git(&work, &["commit", "-q", "-m", "add main.c"])?;
+        git(&root, &["clone", "-q", "--bare", "work", "test.git"])?;
+        git(&root.join("test.git"), &["config", "http.receivepack", "true"])?;
+        Ok(())
+    })();
+    match made {
+        Ok(()) => Some(root),
+        Err(e) => {
+            println!("(no git on this machine: skipping the git tests: {e})");
+            None
+        }
+    }
+}
+
+/// After tests/net.txt: real git must accept what Huldra pushed.
+pub fn check_git_push(root: &std::path::Path) -> Result {
+    let bare = root.join("test.git");
+    git(&bare, &["fsck", "--strict", "--no-dangling"])?;
+    let log = git(&bare, &["log", "--format=%s|%an", "main"])?;
+    if !log.lines().next().is_some_and(|l| l == "edited on huldra|Huldra Tester") {
+        return Err(format!("the commit pushed from Huldra is not on main:\n{log}"));
+    }
+    let file = git(&bare, &["show", "main:hello.txt"])?;
+    if file != "hello from huldra\n" {
+        return Err(format!("hello.txt pushed from Huldra has unexpected content: {file:?}"));
+    }
+    println!("git fsck --strict: ok; pushed commit found on main");
+    Ok(())
+}
+
 /// Starts tests/net/server.py, or returns None (with a note) if Python is
 /// missing or the ports are taken.
-pub fn start_server() -> Option<Server> {
+pub fn start_server(git_root: Option<&std::path::Path>) -> Option<Server> {
     let Some(py) = python() else {
         println!("(no Python: skipping the network tests)");
         return None;
@@ -75,6 +132,7 @@ pub fn start_server() -> Option<Server> {
         .arg(HTTPS_PORT.to_string())
         .arg(data.join("server.pem"))
         .arg(data.join("server.key"))
+        .args(git_root.map(|r| r.as_os_str().to_owned()))
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()

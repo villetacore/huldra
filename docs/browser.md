@@ -7,6 +7,8 @@ Huldra has two web browsers on the same engine:
 - **`web`**: a window on the desktop. You can click links, scroll with the
   wheel and type in an address bar.
 
+![web, the graphical browser](screenshots/web.png)
+
 Both show pages as structured text: headings, paragraphs, lists, tables,
 links and forms. There is no JavaScript and no CSS. Plenty of sites work
 well that way, for example DuckDuckGo Lite, Wikipedia, Hacker News, text

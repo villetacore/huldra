@@ -44,6 +44,14 @@ page allocator to SHA-256, is in this repository.
 <td align="center"><b>boxwm</b>: stacking, like Openbox</td>
 <td align="center"><b>tilewm</b>: tiling, like i3</td>
 </tr>
+<tr>
+<td><img src="docs/screenshots/web.png" alt="web: the graphical browser"></td>
+<td><img src="docs/screenshots/hack.png" alt="hack in the text console"></td>
+</tr>
+<tr>
+<td align="center"><b>web</b>: the browser, over HTTPS</td>
+<td align="center"><b>hack</b> in the text console</td>
+</tr>
 </table>
 
 ## Try it

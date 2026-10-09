@@ -45,6 +45,14 @@ crates.io**: весь код, от аллокатора страниц до SHA-
 <td align="center"><b>boxwm</b> — плавающие окна, как в Openbox</td>
 <td align="center"><b>tilewm</b> — тайлинг, как в i3</td>
 </tr>
+<tr>
+<td><img src="docs/screenshots/web.png" alt="web"></td>
+<td><img src="docs/screenshots/hack.png" alt="hack"></td>
+</tr>
+<tr>
+<td align="center"><b>web</b> — браузер, работает по HTTPS</td>
+<td align="center"><b>hack</b> в текстовой консоли</td>
+</tr>
 </table>
 
 ## Попробовать

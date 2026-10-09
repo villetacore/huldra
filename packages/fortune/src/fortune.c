@@ -5,7 +5,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#define DEFAULT "/usr/share/fortune/fortunes"
+#define DEFAULT "/pkg/system/sw/share/fortune/fortunes"
 
 int main(int argc, char **argv) {
     const char *path = argc > 1 ? argv[1] : DEFAULT;

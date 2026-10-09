@@ -14,7 +14,7 @@ const HEIGHT: i32 = 22;
 
 fn programs() -> Vec<String> {
     let mut v: Vec<String> = Vec::new();
-    for dir in env::var("PATH").unwrap_or("/bin:/usr/bin").split(':') {
+    for dir in env::var("PATH").unwrap_or("/bin:/usr/bin:/pkg/system/sw/bin").split(':') {
         for e in fs::read_dir(dir).unwrap_or_default() {
             if !e.is_dir() && !v.contains(&e.name) {
                 v.push(e.name.clone());

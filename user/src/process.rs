@@ -41,7 +41,7 @@ pub fn find_in_path(name: &str) -> Option<String> {
     if name.contains('/') {
         return crate::fs::exists(name).then(|| String::from(name));
     }
-    let path = crate::env::var("PATH").unwrap_or("/bin:/sbin:/usr/bin:/usr/local/bin");
+    let path = crate::env::var("PATH").unwrap_or("/bin:/sbin:/usr/bin:/usr/local/bin:/pkg/system/sw/bin");
     path.split(':')
         .map(|dir| crate::fs::join(dir, name))
         .find(|p| crate::fs::exists(p))

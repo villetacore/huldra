@@ -1,6 +1,7 @@
 //! The package repository: `packages/NAME/` holds a PKGINFO, C sources in
-//! `src/` (compiled with hcc into /usr/bin/NAME) and files to install in
-//! `files/`. `cargo xtask repo` builds target/repo (INDEX and *.pkg);
+//! `src/` (compiled with hcc into `bin/NAME`) and more files in `files/`.
+//! Paths are relative to the package prefix: installed, they appear under
+//! /pkg/system/sw (`bin/NAME` -> /pkg/system/sw/bin/NAME). `cargo xtask repo` builds target/repo (INDEX and *.pkg);
 //! `serve` makes it available over HTTP, which QEMU guests reach at
 //! 10.0.2.2:8800.
 
@@ -43,9 +44,8 @@ fn build_one(dir: &Path, out: &Path) -> Result<IndexEntry> {
         let bin = target_dir().join("repo-build").join(&info.name);
         fs::create_dir_all(bin.parent().unwrap()).map_err(|e| e.to_string())?;
         cc::compile(&sources, &bin).map_err(|e| format!("package {}: {e}", info.name))?;
-        files.push(PkgFile { path: "usr/".into(), mode: 0o755, data: Vec::new() });
-        files.push(PkgFile { path: "usr/bin/".into(), mode: 0o755, data: Vec::new() });
-        files.push(PkgFile { path: format!("usr/bin/{}", info.name), mode: 0o755, data: fs::read(&bin).map_err(|e| e.to_string())? });
+        files.push(PkgFile { path: "bin/".into(), mode: 0o755, data: Vec::new() });
+        files.push(PkgFile { path: format!("bin/{}", info.name), mode: 0o755, data: fs::read(&bin).map_err(|e| e.to_string())? });
     }
     if dir.join("files").is_dir() {
         let mut more = Vec::new();

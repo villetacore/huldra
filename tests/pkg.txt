@@ -1,47 +1,86 @@
-# Package manager against the repository served by xtask (10.0.2.2:8800).
+# Declarative package management against the repository served by xtask
+# (port 8801 for tests): system.conf -> generations -> rollback -> gc.
 > until grep -q bound /proc/net/if; do sleep 0.2; done
-> echo "repo = http://10.0.2.2:8801" > /etc/pkg.conf
-> pkg install hello
-< no package index
-> pkg update
-< 7 packages
+> echo "repo = http://10.0.2.2:8801" > /etc/system.conf
+> pkg list
+< no generation is active
 > pkg search
-< cowsay
-< fortune
-> pkg search game
-< 2048
-> pkg install fortune
-< also installing dependencies: fortune-data
-< installed fortune-data
-< installed fortune 1.2-1
+< no package index
+> pkg add fortune
+< 7 packages
+< + fortune-data 1.0-2
+< + fortune 1.2-2
+< switched to generation 1
 > fortune
 < --
-> pkg install cowsay hello
-< installed cowsay
+> cat /etc/system.conf
+< packages = fortune
+> readlink /pkg/system
+< generations/1
+> ls -l /pkg/system/sw/bin
+< fortune -> /pkg/store/
+> readlink -f /pkg/system/sw/share/fortune/fortunes
+< -fortune-data-1.0-2/share/fortune/fortunes
+> pkg search game
+< 2048
+> pkg add cowsay hello
+< + cowsay 3.0-2
+< switched to generation 2
 > fortune | cowsay
 < (oo)
 > hello Huldra
 < Hello, Huldra! (installed with pkg)
 > pkg list
 < fortune-data
-> pkg remove fortune-data
-< needed by: fortune
-> pkg remove fortune fortune-data
-< removed fortune-data
-> ls /usr/share
-! fortune
+< (dependency)
+> pkg info cowsay
+< Installed:   3.0-2 in /pkg/store/
+> pkg files hello
+< /pkg/system/sw/bin/hello
+> pkg switch
+< up to date
+> echo "hostname = declared" >> /etc/system.conf
+> pkg switch -n
+< would build a new generation
+> pkg switch
+< kept the old /etc/hostname as /etc/hostname.before-pkg
+< switched to generation 3
+> hostname
+< declared
+> readlink /etc/hostname
+< /pkg/system/etc/hostname
+> hostname other
+< set by /etc/system.conf
+> pkg remove fortune
+< - fortune 1.2-2
+< - fortune-data 1.0-2
+< switched to generation 4
 > which fortune; echo status=$?
 < status=1
-> pkg info cowsay
-< Installed:   3.0-1
-> pkg files hello
-< /usr/bin/hello
-> pkg install nonexistent
+> pkg rollback
+< + fortune 1.2-2
+< switched to generation 3
+> fortune
+< --
+> pkg generations
+< (current)
+> pkg rollback 1
+< switched to generation 1
+> hostname
+< huldra
+> which hello; echo status=$?
+< status=1
+> pkg gc
+< removed 0 store paths
+> pkg gc -d
+< deleted generation 4
+< removed 2 store paths
+> pkg add nonexistent
 < package 'nonexistent' not found
-> pkg upgrade
-< up to date
-> pkg install 2048 sl
-< installed sl 5.0-1
+> grep nonexistent /etc/system.conf; echo status=$?
+< status=1
+> pkg add 2048 sl
+< switched to generation 5
 > sl
 = 2048\r
 = \e[A\e[B\e[C\e[D

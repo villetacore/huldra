@@ -1,7 +1,10 @@
 //! Huldra packages, shared by the `pkg` tool and the repository builder.
 //!
 //! A package (`NAME-VERSION.pkg`) is a ustar archive: a `.PKGINFO` file
-//! followed by the files to install, with paths relative to `/`.
+//! followed by its files, with paths relative to the package's prefix
+//! (`bin/hello`, `share/fortune/fortunes`). pkg unpacks it into its own
+//! store directory and links it into the system profile, so programs find
+//! their files under `/pkg/system/sw` (see [`system`]).
 //! A repository is a directory served over HTTP with an `INDEX` listing
 //! every package with its size and SHA-256. Both use the same
 //! `key = value` stanza format:
@@ -16,6 +19,8 @@
 #![no_std]
 
 extern crate alloc;
+
+pub mod system;
 
 use alloc::collections::BTreeSet;
 use alloc::format;
@@ -274,30 +279,6 @@ pub fn checksum(data: &[u8]) -> String {
     sha256::hex_digest(data)
 }
 
-/// The record of an installed package: its info and the files it owns.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Installed {
-    pub info: PkgInfo,
-    pub files: Vec<String>,
-}
-
-impl Installed {
-    pub fn to_text(&self) -> String {
-        let mut s = self.info.to_text();
-        s.push_str("\n[files]\n");
-        for f in &self.files {
-            s.push_str(f);
-            s.push('\n');
-        }
-        s
-    }
-
-    pub fn parse(text: &str) -> Result<Installed, String> {
-        let (head, files) = text.split_once("[files]").unwrap_or((text, ""));
-        Ok(Installed { info: PkgInfo::parse(head)?, files: files.lines().map(str::trim).filter(|l| !l.is_empty()).map(String::from).collect() })
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -340,11 +321,9 @@ mod tests {
     #[test]
     fn package_round_trip() {
         let info = PkgInfo { name: "hello".into(), version: "1.0".into(), description: "Hi".into(), depends: vec![] };
-        let files = vec![PkgFile { path: "usr/bin/".into(), mode: 0o755, data: vec![] }, PkgFile { path: "usr/bin/hello".into(), mode: 0o755, data: b"\x7fELF".to_vec() }];
+        let files = vec![PkgFile { path: "bin/".into(), mode: 0o755, data: vec![] }, PkgFile { path: "bin/hello".into(), mode: 0o755, data: b"\x7fELF".to_vec() }];
         let data = build_package(&info, &files).unwrap();
         assert_eq!(read_package(&data).unwrap(), (info.clone(), files));
         assert!(build_package(&info, &[PkgFile { path: "../etc/passwd".into(), mode: 0o644, data: vec![] }]).is_err());
-        let inst = Installed { info, files: vec!["usr/bin/hello".into()] };
-        assert_eq!(Installed::parse(&inst.to_text()).unwrap(), inst);
     }
 }

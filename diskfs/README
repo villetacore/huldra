@@ -2,12 +2,15 @@ Huldra documentation and examples, installed in /usr/share/huldra on the
 system disk (an ext2 file system on /dev/hda, mounted as the root).
 Files you create anywhere on the disk survive reboots.
 
-  docs/README.md     the project README
+  docs/README.md     the documentation (less docs/packages.md, ...)
+  docs/overview.md   the project README
   examples/*.c       C programs: cc examples/hello.c -o hello && ./hello
                      or simply: cc -run examples/primes.c 1000
   scripts/hello.sh   a shell script
 
-Software:  pkg update; pkg search; pkg install cowsay fortune 2048 sl
+Software:  the system is declared in /etc/system.conf
+           pkg search; pkg add cowsay fortune 2048 sl; pkg generations;
+           pkg rollback; pkg gc -d (see docs/packages.md)
 Network:   ifconfig; ping 10.0.2.2; wget http://host/file; httpd &
 Editors:   edit FILE (Ctrl+S save, Ctrl+Q quit), less FILE, fm
 Graphics:  startgui (or startgui tilewm); right-click the desktop for a menu;

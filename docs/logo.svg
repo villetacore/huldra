@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="140" viewBox="0 0 560 140" role="img" aria-label="Huldra">
+  <defs>
+    <radialGradient id="glass" cx="50%" cy="45%" r="75%">
+      <stop offset="0" stop-color="#14261c"/>
+      <stop offset="1" stop-color="#08100c"/>
+    </radialGradient>
+    <filter id="glow" x="-20%" y="-50%" width="140%" height="200%">
+      <feGaussianBlur stdDeviation="2.4" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <pattern id="scan" width="4" height="4" patternUnits="userSpaceOnUse">
+      <rect width="4" height="2" fill="#000" opacity="0.22"/>
+    </pattern>
+  </defs>
+  <rect x="2" y="2" width="556" height="136" rx="18" fill="url(#glass)" stroke="#3e8a58" stroke-width="2"/>
+  <g filter="url(#glow)" font-family="'DejaVu Sans Mono', 'Consolas', 'Menlo', monospace">
+    <text x="36" y="58" font-size="20" fill="#5c9a70">root@huldra:~#</text>
+    <text x="36" y="104" font-size="54" font-weight="bold" fill="#96e6a8" letter-spacing="6">HULDRA</text>
+    <rect x="292" y="62" width="28" height="44" fill="#4bd97c">
+      <animate attributeName="opacity" values="1;1;0;0" dur="1.2s" repeatCount="indefinite"/>
+    </rect>
+    <text x="348" y="86" font-size="15" fill="#e0a84a">a small Unix-like OS</text>
+    <text x="348" y="108" font-size="15" fill="#5c9a70">x86_64 · Rust · no deps</text>
+  </g>
+  <rect x="2" y="2" width="556" height="136" rx="18" fill="url(#scan)"/>
+</svg>

@@ -10,6 +10,9 @@ on:
   workflow_call:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -50,8 +53,9 @@ jobs:
         with:
           name: failed-build
           path: |
-            target/initrd.cpio
+            target/test-initrd.cpio
             target/test-disk.img
-            target/cc-test
+            target/session-disk.img
+            target/cc-tests
           if-no-files-found: ignore
           retention-days: 7

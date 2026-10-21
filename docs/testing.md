@@ -8,8 +8,10 @@ QEMU. It uses its own disk image and initrd, so you can keep a
 |---|---|---|
 | 1 | host unit tests | every crate in `libs/`: allocators, ELF, cpio, ext2 (+ consistency checks), tar/SHA-256, the C compiler, TCP/IP (lossy wire, slow reader), DHCP, terminal emulator, tiling, display protocol, package model |
 | 2 | `tests/cc/*.c` | compiled by hcc and gcc and run on Linux; the outputs must match |
+| 2b | `tests/rs/*.rs` | compiled by hrc and rustc and run on Linux (with `NAME.in` as input); standard output, standard error and the exit status must match |
 | 3 | in-kernel tests | `ktest` on the kernel command line: VFS, symlinks, pipes, devices, procfs, scheduler, memory… |
 | 4 | `tests/shell.txt` | the shell language, utilities, full-screen programs, networking (DHCP, ping, httpd + wget, nc), compiling C inside the system, `utest` (system calls from user space) |
+| 4b | `tests/rust.txt` | compiling and running Rust inside the system: the examples, a panic, a compile error |
 | 5 | `tests/persist.txt` | reboot: files on the root disk survive |
 | 6 | `tests/gui.txt` | graphics via `guitest`: drawing reaches the screen, text, moving windows, window list, window manager frames, back to the text console |
 | 7 | `tests/pkg.txt` | declarative packages against the repository xtask serves: add, pins, `/etc` files, remove, rollback, gc |

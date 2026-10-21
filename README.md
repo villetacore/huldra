@@ -95,6 +95,9 @@ Checked out 'main' (457 files)
 root@huldra:~# browse news.ycombinator.com              # or `web` on the desktop
 root@huldra:~# echo 'int main(void){ printf("%d\n", 6*7); }' > a.c && cc -run a.c
 42
+root@huldra:~# rustc -run /usr/share/huldra/examples/primes.rs 30   # Rust, compiled inside
+10 primes up to 30:
+2 3 5 7 11 13 17 19 23 29
 root@huldra:~# help commands                           # everything, documented in the system
 ```
 
@@ -138,6 +141,15 @@ root@huldra:~# help commands                           # everything, documented 
 - Output matches gcc's on the test suite. [More →](docs/c-compiler.md)
 
 </td></tr>
+<tr><td valign="top" colspan="2">
+
+**Rust compiler (`rustc`)**
+- Traits, generics, closures, iterators, `dyn Trait`, `macro_rules!`
+- Its own standard library: `Vec`, `String`, `HashMap`, `Rc`, `io`, `fmt`
+- Translates Rust to C and compiles it with hcc
+- Output matches rustc's on the test suite. [More →](docs/rust-compiler.md)
+
+</td></tr>
 <tr><td valign="top">
 
 **Graphics**
@@ -177,12 +189,12 @@ root@huldra:~# help commands                           # everything, documented 
 ## How it fits together
 
 ```text
-user space   init · sh · pkg · cc · display · boxwm/tilewm · term · Linux binaries
+user space   init · sh · pkg · cc · rustc · display · boxwm/tilewm · term · Linux binaries
              huldra-user runtime (Rust)          libc.c (C, compiled by hcc)
 ───────────────────────── Linux x86_64 system calls ─────────────────────────
 kernel       syscall · proc · task · fs (VFS, ext2, symlinks) · net · mm · drivers · arch
 libs/        no_std crates shared by kernel, user space and xtask: ext2, TCP/IP,
-             TLS, crypto, HTTP, git, HTML, hcc, pkg, gfx, zlib, ELF, allocators
+             TLS, crypto, HTTP, git, HTML, hcc, hrc, pkg, gfx, zlib, ELF, allocators
              (all unit-tested on the host)
 xtask        build, disk images, initrd, ISO, QEMU, package repository, tests
 ```
@@ -192,7 +204,8 @@ Details are in [architecture](docs/architecture.md).
 ## Testing
 
 `cargo xtask test` boots the real system in QEMU and drives it through the
-serial console. It covers host unit tests, hcc against gcc, in-kernel
+serial console. It covers host unit tests, hcc against gcc, hrc against
+rustc, in-kernel
 tests, shell sessions, a reboot with persistent data, graphics, the package
 manager, and HTTP/HTTPS, git and the browser against servers on the host. A
 push from Huldra must pass the host's `git fsck --strict`. Then come Linux
@@ -204,12 +217,12 @@ CI runs it all on every push. See [testing](docs/testing.md).
 | | |
 |---|---|
 | [`kernel/`](kernel) | the kernel |
-| [`libs/`](libs) | `no_std` libraries: ext2, net, tls, crypto, http, git, web, hcc, pkg, gfx, flate, md, elf, archive, allocators |
+| [`libs/`](libs) | `no_std` libraries: ext2, net, tls, crypto, http, git, web, hcc, hrc, pkg, gfx, flate, md, elf, archive, allocators |
 | [`user/`](user) | the runtime library and every program |
 | [`rootfs/`](rootfs) | the base system: `/etc`, `/usr/include`, libc |
 | [`packages/`](packages) | sources of the repository's packages |
 | [`docs/`](docs) | documentation (also installed in `/usr/share/huldra/docs`) |
-| [`tests/`](tests) | QEMU scenarios, C compiler tests, Linux test programs |
+| [`tests/`](tests) | QEMU scenarios, C and Rust compiler tests, Linux test programs |
 | [`xtask/`](xtask) | the build tool |
 
 ## Status

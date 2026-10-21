@@ -51,6 +51,14 @@ Contributions are welcome; see [CONTRIBUTING](../CONTRIBUTING.md).
 - [ ] VLAs, real `long double`, packed bit-fields.
 - [ ] An optimization pass (register allocation for locals).
 
+## Rust compiler
+
+- [x] Traits, generics, closures, iterators, trait objects, `macro_rules!`,
+      a standard library with collections; output checked against rustc.
+- [ ] Destructors (`Drop`) and freeing memory before the program exits.
+- [ ] A borrow checker; checking generic functions where they are defined.
+- [ ] Threads, `u128`/`i128`, `async`.
+
 ## Graphics
 
 - [ ] More fonts than the 8×16 bitmap font; clipboard; drag and drop between

@@ -9,6 +9,7 @@ mod help;
 mod image;
 mod qemu;
 mod repo;
+mod rs;
 mod web;
 
 use std::env;
@@ -46,6 +47,10 @@ commands:
   cc FILE.c... [-o OUT]
                compile C on the host with hcc (the system C compiler)
   cc-test      compile tests/cc/*.c with hcc and compare with gcc
+  rs FILE.rs [-o OUT] [-O] [--emit-c] [--run]
+               compile Rust on the host with hrc (the system Rust compiler)
+  rs-test [NAME]
+               compile tests/rs/*.rs with hrc and compare with rustc
   session FILE run one scripted shell session (see tests/*.txt)
   repo         build the package repository (packages/ -> target/repo)
   serve        build and serve the repository on port 8800 for pkg(1)
@@ -64,6 +69,16 @@ fn main() -> ExitCode {
         print!("{USAGE}");
         return ExitCode::SUCCESS;
     };
+    if command == "rs" || command == "rs-test" {
+        let r = if command == "rs" { rs::command(&args[1..]) } else { rs::test(args.get(1).map(|s| s.as_str())) };
+        return match r {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("{e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     if command == "cc" {
         return match cc::command(&args[1..]) {
             Ok(()) => ExitCode::SUCCESS,
@@ -418,6 +433,9 @@ fn test(options: &Options) -> Result {
     println!("==> C compiler");
     cc::test()?;
 
+    println!("==> Rust compiler");
+    rs::test(None)?;
+
     let mut artifacts = build_with(options, false)?;
     start_repo_server(repo::TEST_PORT);
     let test_disk = target_dir().join("test-disk.img");
@@ -428,6 +446,9 @@ fn test(options: &Options) -> Result {
     qemu::kernel_tests(&artifacts)?;
     println!("==> scripted shell session");
     qemu::shell_session(&artifacts, &root().join("tests").join("shell.txt"))?;
+
+    println!("==> the Rust compiler");
+    qemu::shell_session(&artifacts, &root().join("tests").join("rust.txt"))?;
 
     println!("==> reboot: data on the root disk persists");
     qemu::shell_session(&artifacts, &root().join("tests").join("persist.txt"))?;

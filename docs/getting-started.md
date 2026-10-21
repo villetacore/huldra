@@ -31,6 +31,7 @@ missing:
 | tool | used for |
 |---|---|
 | `gcc` | comparing hcc's output with gcc; the Linux test programs |
+| `rustc` | comparing hrc's output with rustc |
 | `e2fsck` | checking the disk image the guest wrote |
 | `grub-mkrescue`, `xorriso`, `mtools` | `cargo xtask iso` |
 
@@ -57,6 +58,8 @@ card. The console appears both in the QEMU window and in your terminal.
 | `cargo xtask session FILE` | run one scenario (`tests/*.txt`) on a fresh disk |
 | `cargo xtask cc file.c -o prog` | compile C on the host with hcc |
 | `cargo xtask cc-test` | `tests/cc/*.c`: hcc and gcc must print the same |
+| `cargo xtask rs file.rs [-o prog] [--emit-c] [--run]` | compile Rust on the host with hrc |
+| `cargo xtask rs-test [NAME]` | `tests/rs/*.rs`: hrc and rustc must print the same |
 | `cargo xtask repo` / `serve` | build the package repository / serve it over HTTP |
 | `cargo xtask fsck` | build an ext2 image and check it with the real `e2fsck` |
 | `cargo xtask iso` | bootable ISO with GRUB |

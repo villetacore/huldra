@@ -7,6 +7,7 @@
 | [Packages](packages.md) | Declarative system configuration: `/etc/system.conf`, generations, rollback, writing packages, repositories |
 | [Graphics](graphics.md) | The display server, its protocol, the window managers, writing GUI programs in Rust and C |
 | [C compiler](c-compiler.md) | hcc: how it works, the language, the C library |
+| [Rust compiler](rust-compiler.md) | hrc: how it works, the language, the standard library, limitations |
 | [Networking](networking.md) | TCP/IP, HTTP and HTTPS (TLS 1.3), certificates, `wget` and the other tools |
 | [Git](git.md) | The git client: clone, commit, push to GitHub, how it works |
 | [Web browsers](browser.md) | `browse` (terminal) and `web` (window): keys, what pages work, the engine |

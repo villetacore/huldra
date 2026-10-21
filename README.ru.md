@@ -139,6 +139,15 @@ root@huldra:~# help commands                           # справка по в�
 - На тестах печатает то же, что gcc. [Подробнее →](docs/c-compiler.md)
 
 </td></tr>
+<tr><td valign="top" colspan="2">
+
+**Компилятор Rust (`rustc`)**
+- Трейты, дженерики, замыкания, итераторы, `dyn Trait`, `macro_rules!`
+- Своя стандартная библиотека: `Vec`, `String`, `HashMap`, `Rc`, `io`, `fmt`
+- Переводит Rust в Си и собирает его через hcc
+- На тестах печатает то же, что настоящий rustc. [Подробнее →](docs/rust-compiler.md)
+
+</td></tr>
 <tr><td valign="top">
 
 **Графика**
@@ -179,7 +188,7 @@ root@huldra:~# help commands                           # справка по в�
 
 `cargo xtask test` загружает настоящую систему в QEMU и управляет ею
 через последовательный порт. В набор входят unit-тесты на хосте,
-сравнение hcc с gcc, тесты внутри ядра, сценарии в shell, перезагрузка с
+сравнение hcc с gcc и hrc с rustc, тесты внутри ядра, сценарии в shell, перезагрузка с
 сохранением данных, графика и пакетный менеджер. Дальше идут HTTP/HTTPS,
 git и браузер против серверов на хосте, причём push из Huldra должен
 пройти `git fsck --strict` на хосте. Затем Linux-программы, а в конце —
@@ -191,7 +200,7 @@ git и браузер против серверов на хосте, причё�
 | | |
 |---|---|
 | [`kernel/`](kernel) | ядро |
-| [`libs/`](libs) | `no_std`-библиотеки: ext2, сеть, tls, crypto, http, git, web, hcc, pkg, gfx, flate, md, elf, архивы, аллокаторы |
+| [`libs/`](libs) | `no_std`-библиотеки: ext2, сеть, tls, crypto, http, git, web, hcc, hrc, pkg, gfx, flate, md, elf, архивы, аллокаторы |
 | [`user/`](user) | рантайм и все программы |
 | [`rootfs/`](rootfs) | базовая система: `/etc`, `/usr/include`, libc |
 | [`packages/`](packages) | исходники пакетов репозитория |

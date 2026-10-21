@@ -1,0 +1,9 @@
+[package]
+name = "huldra-hrc"
+description = "hrc: a compiler for a subset of Rust, producing static x86-64 ELF executables through hcc"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+huldra-hcc = { path = "../hcc" }
